@@ -70,6 +70,10 @@ jobs:
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOL_VERSION }}
 
+      - name: Debug
+        run: |
+          /usr/bin/ls -alh gradle/build/app/outputs/apk/forkRelease/
+
       - name: Upload arm64 apk
         uses: actions/upload-artifact@v4
         with:
