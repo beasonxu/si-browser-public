@@ -46,7 +46,7 @@ class MarketingAttributionService(private val context: Context) {
         var response: String? = null
 
         @VisibleForTesting
-        internal fun shouldShowMarketingOnboarding(
+        internal suspend fun shouldShowMarketingOnboarding(
             installReferrerResponse: String?,
             distributionIdManager: DistributionIdManager,
         ): Boolean {

@@ -690,6 +690,7 @@ class SearchDialogControllerTest {
             focusToolbar = focusToolbar,
             clearToolbar = clearToolbar,
             dismissDialogAndGoBack = dismissDialogAndGoBack,
+            showDeleteHistoryItemSnackbar = {},
         )
     }
 

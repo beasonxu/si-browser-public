@@ -8,7 +8,6 @@ import mozilla.components.support.test.assertUnused
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import org.junit.Ignore
 import org.junit.Test
 import org.mozilla.experiments.nimbus.NimbusMessagingHelperInterface
 import org.mozilla.fenix.components.AppStore
@@ -35,6 +34,7 @@ class ReviewPromptMiddlewareTest {
                 createJexlHelper = {
                     object : NimbusMessagingHelperInterface {
                         override fun evalJexl(expression: String) = assertUnused()
+                        override fun evalJexlDebug(expression: String) = assertUnused()
                         override fun getUuid(template: String) = assertUnused()
                         override fun stringFormat(template: String, uuid: String?) = assertUnused()
                     }
@@ -237,7 +237,6 @@ class ReviewPromptMiddlewareTest {
         assertNoOp(ReviewPromptAction.ShowPlayStorePrompt)
     }
 
-    @Ignore("https://bugzilla.mozilla.org/show_bug.cgi?id=2001801")
     @Test
     fun `GIVEN custom prompt enabled AND criteria satisfied WHEN check requested THEN sets eligible for Custom prompt`() {
         shouldShowCustomPrompt = true
@@ -266,40 +265,10 @@ class ReviewPromptMiddlewareTest {
         )
     }
 
-    @Ignore("https://bugzilla.mozilla.org/show_bug.cgi?id=2001801")
     @Test
     fun `GIVEN new criteria are disabled AND custom prompt enabled AND criteria satisfied WHEN check requested THEN sets eligible for Custom prompt`() {
         shouldUseNewTriggerCriteria = false
         shouldShowCustomPrompt = true
-        legacyCriteria = sequenceOf(true)
-
-        store.dispatch(ReviewPromptAction.CheckIfEligibleForReviewPrompt)
-
-        assertEquals(
-            AppState(reviewPrompt = ReviewPromptState.Eligible(Type.Custom)),
-            store.state,
-        )
-    }
-
-    @Test
-    fun `GIVEN new criteria are disabled AND custom prompt disabled AND criteria satisfied WHEN check requested THEN sets eligible for Play Store prompt`() {
-        shouldUseNewTriggerCriteria = false
-        shouldShowCustomPrompt = false
-        legacyCriteria = sequenceOf(true)
-
-        store.dispatch(ReviewPromptAction.CheckIfEligibleForReviewPrompt)
-
-        assertEquals(
-            AppState(reviewPrompt = ReviewPromptState.Eligible(Type.PlayStore)),
-            store.state,
-        )
-    }
-
-    @Ignore("https://bugzilla.mozilla.org/show_bug.cgi?id=2001801")
-    @Test
-    fun `GIVEN feature flag disabled AND telemetry enabled AND criteria satisfied WHEN check requested THEN sets eligible for Custom prompt`() {
-        isFeatureFlagEnabled = false
-        isTelemetryEnabled = true
         legacyCriteria = sequenceOf(true)
 
         store.dispatch(ReviewPromptAction.CheckIfEligibleForReviewPrompt).joinBlocking()
@@ -311,9 +280,9 @@ class ReviewPromptMiddlewareTest {
     }
 
     @Test
-    fun `GIVEN feature flag disabled AND telemetry disabled AND criteria satisfied WHEN check requested THEN sets eligible for Play Store prompt`() {
-        isFeatureFlagEnabled = false
-        isTelemetryEnabled = false
+    fun `GIVEN new criteria are disabled AND custom prompt disabled AND criteria satisfied WHEN check requested THEN sets eligible for Play Store prompt`() {
+        shouldUseNewTriggerCriteria = false
+        shouldShowCustomPrompt = false
         legacyCriteria = sequenceOf(true)
 
         store.dispatch(ReviewPromptAction.CheckIfEligibleForReviewPrompt).joinBlocking()
@@ -412,6 +381,7 @@ class ReviewPromptMiddlewareTest {
     private class FakeNimbusMessagingHelperInterface(val evalJexlValue: Boolean) :
         NimbusMessagingHelperInterface {
         override fun evalJexl(expression: String): Boolean = evalJexlValue
+        override fun evalJexlDebug(expression: String): String = ""
         override fun getUuid(template: String): String? = null
         override fun stringFormat(template: String, uuid: String?): String = ""
     }
