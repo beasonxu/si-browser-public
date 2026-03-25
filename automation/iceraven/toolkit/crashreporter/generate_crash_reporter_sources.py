@@ -229,3 +229,8 @@ def main(output, annotations_path):
         sys.exit("Error while writing out the generated file:\n" + str(ex) + "\n")
 
     return {template_path}
+
+if __name__ == '__main__':
+    file_gen = 'android-components/components/lib/crash/src/main/java/mozilla/components/lib/crash/service/CrashReport.kt'
+    with open(file_gen, 'w') as f:
+        emit_java(output=f)
