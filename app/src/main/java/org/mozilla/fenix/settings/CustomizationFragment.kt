@@ -258,13 +258,13 @@ class CustomizationFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFrag
 
         addToRadioGroup(topPreference, bottomPreference)
 
-        requirePreference<SwitchPreference>(R.string.pref_key_strip_url).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_strip_url).apply {
             isChecked = requireContext().settings().shouldStripUrl
 
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 
-        requirePreference<SwitchPreference>(R.string.pref_key_suggest_shipped_domains).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_suggest_shipped_domains).apply {
             isChecked = requireContext().settings().shouldSuggestShippedDomains
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
@@ -355,34 +355,34 @@ class CustomizationFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFrag
     }
 
     private fun setupSystemBehaviorCategory() {
-        requirePreference<SwitchPreference>(R.string.pref_key_relinquish_memory_under_pressure).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_relinquish_memory_under_pressure).apply {
             isChecked = requireContext().settings().shouldRelinquishMemoryUnderPressure
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
     }
 
     private fun setupDownloadCustomizationCategory() {
-        requirePreference<SwitchPreference>(R.string.pref_key_success_download_dialog).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_success_download_dialog).apply {
             isChecked = requireContext().settings().shouldShowSuccessDownloadDialog
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
     }
 
     private fun setupOtherCustomizationCategory() {
-        requirePreference<SwitchPreference>(R.string.pref_key_show_display_name_insteadof_email).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_display_name_insteadof_email).apply {
             isChecked = requireContext().settings().showDisplayNameInsteadOfEmail
 
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 
 
-        requirePreference<SwitchPreference>(R.string.pref_key_show_fullscreen_toast).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_fullscreen_toast).apply {
             isChecked = requireContext().settings().shouldShowFullScreenToast
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 
 
-        requirePreference<SwitchPreference>(R.string.pref_key_show_sign_in_button).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_sign_in_button).apply {
             isChecked = requireContext().settings().shouldShowSignInButton
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }

@@ -28,6 +28,10 @@ android {
     }
 }
 
+tasks.configureEach { task ->
+    task.dependsOn(":app:createBuildDir")
+}
+
 dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.appcompat

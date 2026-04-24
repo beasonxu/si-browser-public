@@ -127,7 +127,7 @@ class SearchEngineFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragm
             }
 
         val showSessionSuggestions =
-            requirePreference<SwitchPreference>(R.string.pref_key_search_opened_tabs).apply {
+            requirePreference<SwitchPreferenceCompat>(R.string.pref_key_search_opened_tabs).apply {
                 isChecked = context.settings().shouldShowSessionSuggestions
             }
 
@@ -137,17 +137,17 @@ class SearchEngineFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragm
             }
 
         val showReaderModeBtnPreference =
-            requirePreference<SwitchPreference>(R.string.pref_key_show_reader_mode_btn).apply {
+            requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_reader_mode_btn).apply {
                 isChecked = context.settings().shouldShowReaderModeBtn
             }
 
         val showQRScanSearchPreference =
-            requirePreference<SwitchPreference>(R.string.pref_key_show_qr_scan_search).apply {
+            requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_qr_scan_search).apply {
                 isChecked = context.settings().shouldShowQRScanSearch
             }
 
         val showHomeButtonPreference =
-            requirePreference<SwitchPreference>(R.string.pref_key_show_home_button).apply {
+            requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_home_button).apply {
                 isChecked = context.settings().shouldShowHomeButton
             }
 

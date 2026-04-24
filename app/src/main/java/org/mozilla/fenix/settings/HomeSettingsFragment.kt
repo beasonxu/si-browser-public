@@ -90,7 +90,7 @@ class HomeSettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragm
             }
         }
 
-        requirePreference<SwitchPreference>(R.string.pref_key_show_top_recent_sites).apply {
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_show_top_recent_sites).apply {
             isChecked = fenixSettings.showTopRecentSites
             onPreferenceChangeListener = object : SharedPreferenceUpdater() {
                 override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {

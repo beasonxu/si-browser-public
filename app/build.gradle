@@ -170,6 +170,7 @@ android {
             ])
         }
         forkDebug {
+            isDefault true
             shrinkResources false
             minifyEnabled false
             applicationIdSuffix ".iceraven.debug"

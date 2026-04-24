@@ -80,7 +80,7 @@
             android:defaultValue="true"
             android:key="@string/pref_key_search_opened_tabs"
             android:title="@string/preferences_search_opened_tabs" />
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:iconSpaceReserved="false"
             android:key="@string/pref_key_show_nonsponsored_suggestions"
             android:title="@string/preferences_show_nonsponsored_suggestions"
@@ -113,7 +113,7 @@
             android:defaultValue="true"
             android:key="@string/pref_key_show_home_button"
             android:title="@string/preferences_show_home_button"/>
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:iconSpaceReserved="false"
             android:defaultValue="true"
             android:key="@string/pref_key_show_clipboard_suggestions"
@@ -128,12 +128,12 @@
             android:defaultValue="true"
             android:key="@string/pref_key_show_reader_mode_btn"
             android:title="@string/preferences_show_reader_mode_btn" />
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:iconSpaceReserved="false"
             android:defaultValue="true"
             android:key="@string/pref_key_show_qr_scan_search"
             android:title="@string/preferences_show_qr_scan_search" />
-        <SwitchPreference
+        <SwitchPreferenceCompat
             app:iconSpaceReserved="false"
             android:defaultValue="true"
             android:key="@string/pref_key_enable_autocomplete_urls"

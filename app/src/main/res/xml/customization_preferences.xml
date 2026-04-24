@@ -52,12 +52,12 @@
         <org.mozilla.fenix.settings.RadioButtonPreference
             android:key="@string/pref_key_toolbar_bottom"
             android:title="@string/preference_bottom_toolbar" />
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="@string/pref_key_strip_url"
             android:summary="@string/preferences_strip_url_description"
             android:title="@string/preferences_strip_url_title" />
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:key="@string/pref_key_suggest_shipped_domains"
             android:title="@string/preferences_suggest_shipped_domains"/>
         <androidx.preference.Preference
@@ -126,7 +126,7 @@
         android:layout="@layout/preference_cat_style"
         android:title="@string/library_downloads"
         app:iconSpaceReserved="false">
-        <androidx.preference.SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:key="@string/pref_key_success_download_dialog"
             android:title="@string/preferences_show_success_download_dialog"/>
     </androidx.preference.PreferenceCategory>
@@ -153,7 +153,7 @@
         android:title="@string/preferences_system_behavior"
         app:allowDividerAbove="true"
         app:iconSpaceReserved="false">
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="@string/pref_key_relinquish_memory_under_pressure"
             android:summary="@string/preferences_relinquish_memory_description"
@@ -167,14 +167,14 @@
         app:allowDividerAbove="true"
         app:iconSpaceReserved="false"
         >
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:defaultValue="true"
             android:key="@string/pref_key_show_display_name_insteadof_email"
             android:title="@string/preferences_show_display_name_insteadof_email" />
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:key="@string/pref_key_show_fullscreen_toast"
             android:title="@string/preferences_show_fullscreen_toast" />
-        <SwitchPreference
+        <androidx.preference.SwitchPreferenceCompat
             android:key="@string/pref_key_show_sign_in_button"
             android:title="@string/preferences_show_sign_in_button" />
     </androidx.preference.PreferenceCategory>
