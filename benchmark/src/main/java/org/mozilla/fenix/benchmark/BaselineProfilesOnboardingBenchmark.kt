@@ -51,11 +51,11 @@ class BaselineProfilesOnboardingBenchmark {
     @get:Rule
     val benchmarkRule = MacrobenchmarkRule()
 
-    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=2021112")
+    @Ignore("Failing due to new nightly config: https://bugzilla.mozilla.org/show_bug.cgi?id=2031266")
     @Test
     fun onboardingNone() = onboardingBenchmark(CompilationMode.None())
 
-    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=2021112")
+    @Ignore("Failing due to new nightly config: https://bugzilla.mozilla.org/show_bug.cgi?id=2031266")
     @Test
     fun onboarding() =
         onboardingBenchmark(CompilationMode.Partial(baselineProfileMode = BaselineProfileMode.Require))

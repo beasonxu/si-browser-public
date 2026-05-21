@@ -17,8 +17,6 @@ import org.mozilla.fenix.components.ReviewPromptAttemptResult.Displayed
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.Error
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.NotDisplayed
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.Unknown
-import org.mozilla.fenix.ext.components
-import org.mozilla.fenix.ext.openToBrowser
 import org.mozilla.fenix.settings.SupportUtils
 import java.text.SimpleDateFormat
 import java.util.Date
