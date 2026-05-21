@@ -366,6 +366,15 @@ BuildID:
   glean:
     metric: crash.app_build
 
+CrashID:
+  description: A UUID for the crash event.
+  type: string
+  scope: ping
+  bugs:
+    - 1993525
+  glean:
+    metric: crash.id
+
 CrashType:
   description: The type of crash that occurred (Android-only).
   type: string
@@ -1155,6 +1164,12 @@ RemoteType:
   type: string
   scope: ping
 
+RosettaStatus:
+  description: >
+    True if Rosetta translation is being used.
+  type: boolean
+  scope: report
+
 SafeMode:
   description: >
     Set to 1 if the browser was started in safe mode.
@@ -1194,10 +1209,9 @@ ShutdownReason:
 
 StackTraces:
   description: >
-    Stack traces extracted from the crash minidump, if available. These are
-    sent in pings, however they are extracted and transformed into a different
-    format. The field in the extra file is meant only for client use.
-  type: object
+    Stack traces extracted from the crash minidump, if available. A serialized
+    JSON object (with a structure matching the associated Glean object description).
+  type: string
   scope: ping-only
   glean:
     type: object
@@ -1365,6 +1379,14 @@ TestInteger:
   description: >
     Annotation used in tests.
   type: u32
+  scope: report
+
+ThreadLastCreateError:
+  description: >
+    Diagnostic info recorded when PR_CreateThread fails. Contains the thread
+    name, NSPR error code, and OS error code. Never cleared, so it reflects
+    the last failure if there were multiple.
+  type: string
   scope: report
 
 TextureUsage:
@@ -1571,3 +1593,4 @@ XPCOMSpinEventLoopStack:
     the prefix ("default" means parent) and see bug 1741131 for details.
   type: string
   scope: report
+  
