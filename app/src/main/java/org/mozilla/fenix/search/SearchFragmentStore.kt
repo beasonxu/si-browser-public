@@ -514,16 +514,9 @@ private fun searchStateReducer(state: SearchFragmentState, action: SearchFragmen
                 showAllBookmarkSuggestions = false,
                 showSyncedTabsSuggestionsForCurrentEngine =
                     action.settings.shouldShowSyncedTabsSuggestions && !action.engine.isGeneral,
-                showAllSyncedTabsSuggestions = when (action.settings.showUnifiedSearchFeature) {
-                    true -> false
-                    false -> action.settings.shouldShowSyncedTabsSuggestions
-                },
-                showSessionSuggestionsForCurrentEngine = action.settings.showUnifiedSearchFeature &&
-                    !action.engine.isGeneral && action.settings.shouldShowSessionSuggestions,
-                showAllSessionSuggestions = when (action.settings.showUnifiedSearchFeature) {
-                    true -> false
-                    false -> action.settings.shouldShowSessionSuggestions
-                },
+                showAllSyncedTabsSuggestions = false,
+                showSessionSuggestionsForCurrentEngine = !action.engine.isGeneral,
+                showAllSessionSuggestions = false,
                 showSponsoredSuggestions = false,
                 showNonSponsoredSuggestions = false,
                 showStocksSuggestions = false,

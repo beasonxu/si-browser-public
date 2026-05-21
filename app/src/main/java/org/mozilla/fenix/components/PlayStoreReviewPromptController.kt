@@ -35,12 +35,12 @@ class PlayStoreReviewPromptController(
     /**
      * Launch the in-app review flow, unless we've hit the quota.
      */
-    suspend fun tryPromptReview(activity: Activity,onNotDisplayed: () -> Unit = {}, onError: () -> Unit = {},) {}
+    suspend fun tryPromptReview(activity: Activity, onNotDisplayed: () -> Unit = {}, onError: () -> Unit = {},) {}
 
     /**
      * Try to launch the play store review flow.
      */
-    fun tryLaunchPlayStoreReview(activity: Activity) {}
+    fun tryLaunchPlayStoreReview(activity: Activity, openInNewTab: (url: String) -> Unit,) {}
 
     companion object {
         /**
