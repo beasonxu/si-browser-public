@@ -5,6 +5,7 @@
 package org.mozilla.fenix.components.menu.store
 
 import android.graphics.Bitmap
+import androidx.compose.runtime.Immutable
 import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.feature.addons.Addon
 import mozilla.components.lib.state.State
@@ -19,6 +20,9 @@ import org.mozilla.fenix.components.menu.MenuAccessPoint
  * @property customTabSessionId The ID of the custom tab session if navigating from
  * an external access point, and null otherwise.
  * @property extensionMenuState The [ExtensionMenuState] to display.
+ * @property summarizationMenuState The [SummarizationMenuState] that handles summarization menu item
+ * @property ipProtectionMenuState The [IPProtectionMenuState] for the IP protection menu item.
+ * @property isMoreMenuExpanded Whether or not the "more menu" is expanded.
  * @property isDesktopMode Whether or not the desktop mode is enabled for the currently visited
  * page.
  */
@@ -26,6 +30,9 @@ data class MenuState(
     val browserMenuState: BrowserMenuState? = null,
     val customTabSessionId: String? = null,
     val extensionMenuState: ExtensionMenuState = ExtensionMenuState(),
+    val summarizationMenuState: SummarizationMenuState = SummarizationMenuState.Default,
+    val ipProtectionMenuState: IPProtectionMenuState = IPProtectionMenuState(),
+    val isMoreMenuExpanded: Boolean = false,
     val isDesktopMode: Boolean = false,
 ) : State {
 
@@ -119,6 +126,34 @@ data class BookmarkState(
 )
 
 /**
+ * Represents the state of the summarization menu items.
+ *
+ * @property visible Whether the menu item is visible altogether.
+ * @property enabled Whether the menu item is enabled.
+ * @property highlighted Whether the menu item is highlighted.
+ * @property showNewFeatureBadge Whether the "new" badge should be shown
+ * @property overflowMenuHighlighted Whether the overflow menu item is highlighted
+ */
+@Immutable
+data class SummarizationMenuState(
+    val visible: Boolean,
+    val enabled: Boolean,
+    val highlighted: Boolean,
+    val showNewFeatureBadge: Boolean,
+    val overflowMenuHighlighted: Boolean,
+) {
+    companion object {
+        val Default = SummarizationMenuState(
+            visible = false,
+            highlighted = false,
+            enabled = false,
+            showNewFeatureBadge = false,
+            overflowMenuHighlighted = false,
+        )
+    }
+}
+
+/**
  * Installed extensions actions to display relevant to the browser as a whole.
  *
  * @property id The id of the web extension.
@@ -156,4 +191,37 @@ data class TranslationInfo(
     val isTranslated: Boolean,
     val translatedLanguage: String,
     val onTranslatePageMenuClick: () -> Unit,
+)
+
+/**
+ * Represents the possible display states of the IP protection menu item badge.
+ */
+enum class IPProtectionMenuStatus {
+    /** Proxy is ready but not active. */
+    Off,
+
+    /** Proxy is active and protecting traffic. */
+    On,
+
+    /** Proxy is in the process of activating. */
+    Activating,
+
+    /** Proxy is paused. */
+    Paused,
+
+    /** Proxy encountered an error. */
+    Error,
+
+    /** User needs to authenticate before IP protection can be used. */
+    NeedsAuthentication,
+}
+
+/**
+ * Represents the state of the IP protection menu item.
+ *
+ * @property status The current [IPProtectionMenuStatus] shown in the badge.
+ */
+@Immutable
+data class IPProtectionMenuState(
+    val status: IPProtectionMenuStatus = IPProtectionMenuStatus.Off,
 )

@@ -75,7 +75,7 @@ import org.mozilla.fenix.home.toolbar.TabCounterInteractions.TabCounterLongClick
 import org.mozilla.fenix.search.BrowserToolbarSearchMiddleware
 import org.mozilla.fenix.search.ext.searchEngineShortcuts
 import org.mozilla.fenix.settings.ShortcutType
-import org.mozilla.fenix.tabstray.Page
+import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.utils.Settings
 import mozilla.components.lib.state.Action as MVIAction
 import mozilla.components.ui.icons.R as iconsR
@@ -227,7 +227,7 @@ class BrowserToolbarMiddleware(
         searchTerms: String? = null,
     ) {
         browsingMode?.let { browsingModeManager.mode = it }
-        store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms ?: "")))
+        store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms ?: ""), true))
         appStore.dispatch(SearchStarted())
     }
 
@@ -386,7 +386,7 @@ class BrowserToolbarMiddleware(
 
                 else -> listOf(
                     BrowserToolbarMenuButton(
-                        icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_24),
+                        icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_fill_24),
                         text = StringResText(tabcounterR.string.mozac_browser_menu_new_private_tab),
                         contentDescription = StringResContentDescription(
                             tabcounterR.string.mozac_browser_menu_new_private_tab,
@@ -445,7 +445,9 @@ class BrowserToolbarMiddleware(
 
     private fun reconcileSelectedEngine(): SearchEngine? =
         appStore.state.searchState.selectedSearchEngine?.searchEngine
-            ?: browserStore.state.search.selectedOrDefaultSearchEngine
+            ?: browserStore.state.search.selectedOrDefaultSearchEngine(
+                private = browsingModeManager.mode.isPrivate,
+            )
 
     @VisibleForTesting
     internal enum class HomeToolbarAction {
@@ -490,6 +492,7 @@ class BrowserToolbarMiddleware(
 
         HomeToolbarAction.Menu -> {
             val highlighted = appStore.state.supportedMenuNotifications
+                .filterNot { it is SupportedMenuNotifications.Summarize }
                 .any { it != SupportedMenuNotifications.OpenInApp }
             ActionButtonRes(
                 drawableResId = iconsR.drawable.mozac_ic_ellipsis_vertical_24,
@@ -558,6 +561,7 @@ class BrowserToolbarMiddleware(
             ShortcutType.TRANSLATE -> HomeToolbarAction.FakeTranslate
             ShortcutType.HOMEPAGE -> HomeToolbarAction.FakeHomepage
             ShortcutType.BACK -> HomeToolbarAction.FakeBack
+            ShortcutType.NONE -> null
         }
     }
 }

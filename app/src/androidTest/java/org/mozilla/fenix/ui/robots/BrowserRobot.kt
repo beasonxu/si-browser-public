@@ -911,7 +911,6 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
 
     fun verifyOpenLinkInAnotherAppPrompt(appName: String) {
         assertUIObjectExists(
-            itemWithResId("$packageName:id/parentPanel"),
             itemContainingText(
                 getStringResource(
                     applinksR.string.mozac_feature_applinks_normal_confirm_dialog_title_with_app_name,
@@ -942,6 +941,15 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
         )
     }
 
+    fun verifyAppLinksPromptCheckbox(exists: Boolean = true) {
+        assertUIObjectExists(
+            itemContainingText(
+                getStringResource(applinksR.string.mozac_feature_applinks_confirm_dialog_checkbox_label),
+            ),
+            exists = exists,
+        )
+    }
+
     fun verifyPrivateBrowsingOpenLinkInAnotherAppPrompt(appName: String, url: String, pageObject: UiObject) {
         for (i in 1..RETRY_COUNT) {
             try {
@@ -949,7 +957,7 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
                 assertUIObjectExists(
                     itemContainingText(
                         getStringResource(
-                            applinksR.string.mozac_feature_applinks_confirm_dialog_title_with_app_name,
+                            applinksR.string.mozac_feature_applinks_normal_confirm_dialog_title_with_app_name,
                             appName,
                         ),
                     ),
@@ -1350,14 +1358,20 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
     }
 
     fun clickWebCompatPageItem(itemText: String) {
-        clickPageObject(composeTestRule, itemWithTextAndIndex(itemText, 0))
+        clickPageObject(composeTestRule, itemWithText(itemText))
         waitForAppWindowToBeUpdated()
+    }
+
+    fun verifyETPShieldIconIsDisplayed(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "verifyETPShieldIconIsDisplayed: Trying to verify that the \"Shield icon\" is displayed")
+        composeTestRule.onNodeWithContentDescription(getStringResource(toolbarR.string.mozac_browser_toolbar_content_description_site_info)).assertIsDisplayed()
+        Log.i(TAG, "verifyETPShieldIconIsDisplayed: Verified that the \"Shield icon\" was displayed")
     }
 
     class Transition(private val composeTestRule: ComposeTestRule) {
         fun openThreeDotMenu(interact: ThreeDotMenuMainRobot.() -> Unit): ThreeDotMenuMainRobot.Transition {
             Log.i(TAG, "openThreeDotMenu: Trying to click main menu button")
-            composeTestRule.onNodeWithContentDescription(getStringResource(R.string.content_description_menu)).performClick()
+            itemWithDescription(getStringResource(R.string.content_description_menu)).click()
             Log.i(TAG, "openThreeDotMenu: Clicked main menu button")
             assertUIObjectExists(itemWithResId("$packageName:id/design_bottom_sheet"))
 
@@ -1386,7 +1400,7 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
             return NavigationToolbarRobot.Transition(composeTestRule)
         }
 
-        fun openTabDrawer(composeTestRule: HomeActivityComposeTestRule, interact: TabDrawerRobot.() -> Unit): TabDrawerRobot.Transition {
+        fun openTabDrawer(composeTestRule: ComposeTestRule, interact: TabDrawerRobot.() -> Unit): TabDrawerRobot.Transition {
             Log.i(TAG, "openTabDrawer: Trying to click the tab counter button")
             composeTestRule.onNodeWithTag(TABS_COUNTER).performClick()
             Log.i(TAG, "openTabDrawer: Clicked the tab counter button")
@@ -1471,6 +1485,8 @@ class BrowserRobot(private val composeTestRule: ComposeTestRule) {
                     mDevice.findObject(By.textContains(title)).click()
                     Log.i(TAG, "clickDownloadLink: Clicked the: $title download link")
                     assertUIObjectExists(itemWithResId("$packageName:id/parentPanel"))
+
+                    break
                 } catch (e: AssertionError) {
                     Log.i(TAG, "clickDownloadLink: AssertionError caught, executing fallback methods")
                     if (i == RETRY_COUNT) {

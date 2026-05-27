@@ -14,11 +14,9 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.runner.RunWith
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction
 
-@RunWith(AndroidJUnit4::class)
 class CrashReporterBindingTest {
 
     private val testDispatcher = StandardTestDispatcher()
@@ -28,9 +26,8 @@ class CrashReporterBindingTest {
         val appStore = AppStore()
         var onReportingCalled = false
         val binding = CrashReporterBinding(
-            context = mockk<Context>(),
             store = appStore,
-            onReporting = { crashIDs, ctxt ->
+            onReporting = { crashIDs ->
                 assertEquals(listOf<String>(), crashIDs)
                 onReportingCalled = true
             },
@@ -49,9 +46,8 @@ class CrashReporterBindingTest {
         val appStore = AppStore()
         var onReportingCalled = false
         val binding = CrashReporterBinding(
-            context = mockk<Context>(),
             store = appStore,
-            onReporting = { crashIDs, ctxt ->
+            onReporting = { crashIDs ->
                 assertNotNull(crashIDs)
                 assertEquals(listOf("1", "2"), crashIDs)
                 onReportingCalled = true

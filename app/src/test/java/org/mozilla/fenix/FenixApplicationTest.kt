@@ -14,12 +14,17 @@ import io.mockk.mockk
 import io.mockk.spyk
 import io.mockk.verify
 import kotlinx.coroutines.runBlocking
+import mozilla.components.browser.state.state.BrowserState
+import mozilla.components.browser.state.state.SearchState
 import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.concept.ai.controls.AIFeatureBlock
+import mozilla.components.concept.ai.controls.AIFeatureRegistry
 import mozilla.components.concept.engine.Engine.HttpsOnlyMode
 import mozilla.components.concept.engine.webextension.DisabledFlags
 import mozilla.components.concept.engine.webextension.Metadata
 import mozilla.components.concept.engine.webextension.WebExtension
 import mozilla.components.feature.addons.migration.DefaultSupportedAddonsChecker
+import mozilla.components.support.test.robolectric.DefaultBrowserUtils
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.utils.BrowsersCache
 import mozilla.components.support.utils.ext.packageManagerWrapper
@@ -83,6 +88,8 @@ class FenixApplicationTest {
 
         every { testContext.components.core } returns mockk(relaxed = true)
         every { testContext.components.nimbus } returns mockk(relaxed = true)
+        every { testContext.components.aiControlsFeatureBlock } returns AIFeatureBlock.inMemory()
+        every { testContext.components.aiFeatureRegistry } returns AIFeatureRegistry.inMemory()
         every { testContext.components.distributionIdManager } returns DistributionIdManager(
             packageManager = testContext.packageManagerWrapper,
             browserStoreProvider = DefaultDistributionBrowserStoreProvider(browserStore),
@@ -133,7 +140,7 @@ class FenixApplicationTest {
         every { application.packageManager } returns packageManager
         @Suppress("DEPRECATION")
         every { packageManager.getInstallerPackageName(any()) } returns expectedAppInstallSource
-        every { browsersCache.all(any()).isDefaultBrowser } returns true
+        DefaultBrowserUtils.setAsDefaultBrowser(testContext.packageName)
         every { mozillaProductDetector.getMozillaBrowserDefault(any()) } returns expectedAppName
         every { mozillaProductDetector.getInstalledMozillaProducts(any()) } returns listOf(expectedAppName)
         every { settings.adjustCampaignId } returns "ID"
@@ -166,7 +173,6 @@ class FenixApplicationTest {
         every { settings.shouldShowHistorySuggestions } returns true
         every { settings.shouldShowBookmarkSuggestions } returns true
         every { settings.shouldShowClipboardSuggestions } returns true
-        every { settings.shouldShowSearchShortcuts } returns true
         every { settings.openLinksInAPrivateTab } returns true
         every { settings.shouldShowSearchSuggestionsInPrivate } returns true
         every { settings.shouldShowVoiceSearch } returns true
@@ -202,7 +208,6 @@ class FenixApplicationTest {
             browserStore = browserStore,
             settings = settings,
             dohSettingsProvider,
-            browsersCache = browsersCache,
             mozillaProductDetector = mozillaProductDetector,
         )
 
@@ -233,7 +238,6 @@ class FenixApplicationTest {
         assertEquals(true, Preferences.browsingHistorySuggestion.testGetValue())
         assertEquals(true, Preferences.bookmarksSuggestion.testGetValue())
         assertEquals(true, Preferences.clipboardSuggestionsEnabled.testGetValue())
-        assertEquals(true, Preferences.searchShortcutsEnabled.testGetValue())
         assertEquals(true, Preferences.voiceSearchEnabled.testGetValue())
         assertEquals("never", Preferences.openLinksInAppEnabled.testGetValue())
         assertEquals(true, Preferences.signedInSync.testGetValue())
@@ -269,7 +273,6 @@ class FenixApplicationTest {
         application.setStartupMetrics(
             browserStore = browserStore,
             settings = settings,
-            browsersCache = browsersCache,
             mozillaProductDetector = mozillaProductDetector,
         )
 
@@ -290,7 +293,6 @@ class FenixApplicationTest {
             application.setStartupMetrics(
                 browserStore = browserStore,
                 settings = settings,
-                browsersCache = browsersCache,
                 mozillaProductDetector = mozillaProductDetector,
             )
 
@@ -313,10 +315,54 @@ class FenixApplicationTest {
             application.setStartupMetrics(
                 browserStore = browserStore,
                 settings = settings,
-                browsersCache = browsersCache,
                 mozillaProductDetector = mozillaProductDetector,
             )
 
             assertEquals("Test", Preferences.etpCustomCookiesSelection.testGetValue())
         }
+
+    @Test
+    fun `WHEN the search configuration is updated in remote settings THEN set a new search configuration being available`() {
+        val browserStore = BrowserStore(
+            BrowserState(
+                search = SearchState(
+                    isNewSearchConfigurationAvailable = false,
+                ),
+            ),
+        )
+
+        application.setupRefreshingSearchEngines(listOf("search-config-v2"), browserStore)
+
+        assertTrue(browserStore.state.search.isNewSearchConfigurationAvailable)
+    }
+
+    @Test
+    fun `WHEN the search configuration overrides are updated in remote settings THEN set a new search configuration being available`() {
+        val browserStore = BrowserStore(
+            BrowserState(
+                search = SearchState(
+                    isNewSearchConfigurationAvailable = false,
+                ),
+            ),
+        )
+
+        application.setupRefreshingSearchEngines(listOf("search-config-overrides-v2"), browserStore)
+
+        assertTrue(browserStore.state.search.isNewSearchConfigurationAvailable)
+    }
+
+    @Test
+    fun `WHEN the search engine icons are updated in remote settings THEN set a new search configuration being available`() {
+        val browserStore = BrowserStore(
+            BrowserState(
+                search = SearchState(
+                    isNewSearchConfigurationAvailable = false,
+                ),
+            ),
+        )
+
+        application.setupRefreshingSearchEngines(listOf("search-config-icons"), browserStore)
+
+        assertTrue(browserStore.state.search.isNewSearchConfigurationAvailable)
+    }
 }

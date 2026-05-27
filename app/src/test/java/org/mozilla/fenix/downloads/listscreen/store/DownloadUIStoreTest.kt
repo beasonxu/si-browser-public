@@ -4,6 +4,9 @@
 
 package org.mozilla.fenix.downloads.listscreen.store
 
+import io.mockk.every
+import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
@@ -11,7 +14,9 @@ import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.content.DownloadState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.feature.downloads.DownloadsUseCases
+import mozilla.components.lib.publicsuffixlist.PublicSuffixList
 import mozilla.components.support.utils.FakeDateTimeProvider
+import mozilla.components.support.utils.FakeDownloadFileUtils
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -24,6 +29,7 @@ import org.mozilla.fenix.downloads.listscreen.middleware.DownloadDeleteMiddlewar
 import org.mozilla.fenix.downloads.listscreen.middleware.DownloadUIMapperMiddleware
 import org.mozilla.fenix.downloads.listscreen.middleware.DownloadUIRenameMiddleware
 import org.mozilla.fenix.downloads.listscreen.middleware.FakeFileItemDescriptionProvider
+import org.mozilla.fenix.utils.Settings.DeleteDownloadBehavior
 import java.io.File
 import java.nio.file.Files
 import java.time.LocalDate
@@ -43,6 +49,7 @@ class DownloadUIStoreTest {
     private val older = LocalDate.of(2025, 4, 20)
     private val fakeDateTimeProvider = FakeDateTimeProvider(today)
     private val zoneId = fakeDateTimeProvider.currentZoneId()
+    private var publicSuffixList: PublicSuffixList = mockk()
 
     private val testDelay = 100L
 
@@ -53,6 +60,7 @@ class DownloadUIStoreTest {
         filePath = "downloads/1.pdf",
         description = "Completed",
         contentType = "application/pdf",
+        directoryPath = "downloads",
         displayedShortUrl = "mozilla.com",
         status = FileItem.Status.Completed,
         timeCategory = TimeCategory.TODAY,
@@ -64,7 +72,6 @@ class DownloadUIStoreTest {
         fileName = "1.pdf",
         status = DownloadState.Status.COMPLETED,
         contentLength = 77,
-        destinationDirectory = "downloads",
         directoryPath = "downloads",
         contentType = "application/pdf",
     )
@@ -76,6 +83,7 @@ class DownloadUIStoreTest {
         filePath = "downloads/title",
         description = "Completed",
         displayedShortUrl = "mozilla.com",
+        directoryPath = "downloads",
         contentType = "jpg",
         status = FileItem.Status.Completed,
         timeCategory = TimeCategory.OLDER,
@@ -88,7 +96,6 @@ class DownloadUIStoreTest {
         fileName = "title",
         status = DownloadState.Status.COMPLETED,
         contentLength = 77,
-        destinationDirectory = "downloads",
         directoryPath = "downloads",
         contentType = "jpg",
     )
@@ -167,6 +174,7 @@ class DownloadUIStoreTest {
             description = "77 kB",
             displayedShortUrl = "url",
             contentType = "image/jpeg",
+            directoryPath = "downloads",
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
         )
@@ -178,6 +186,7 @@ class DownloadUIStoreTest {
             filePath = "docPath",
             description = "77 kB",
             displayedShortUrl = "url",
+            directoryPath = "downloads",
             contentType = "application/pdf",
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
@@ -221,6 +230,7 @@ class DownloadUIStoreTest {
             description = "77",
             displayedShortUrl = "url",
             contentType = "image/jpeg",
+            directoryPath = "downloads",
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
         )
@@ -233,6 +243,7 @@ class DownloadUIStoreTest {
             description = "1234",
             displayedShortUrl = "image2",
             contentType = "image/jpg",
+            directoryPath = "downloads",
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
         )
@@ -244,6 +255,7 @@ class DownloadUIStoreTest {
             filePath = "docPath",
             description = "77",
             displayedShortUrl = "url",
+            directoryPath = "downloads",
             contentType = "application/pdf",
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
@@ -302,13 +314,24 @@ class DownloadUIStoreTest {
         val initialState = oneItemDefaultState()
         val store = DownloadUIStore(initialState)
 
-        store.dispatch(DownloadUIAction.ShareFileClicked(fileItem1.filePath, fileItem1.contentType))
+        store.dispatch(
+            DownloadUIAction.ShareFileClicked(
+            directoryPath = fileItem1.directoryPath,
+            fileName = fileItem1.filePath,
+            contentType = fileItem1.contentType,
+        ),
+        )
         assertSame(initialState, store.state)
     }
 
     @Test
     fun deleteOneElement() = runTest(testDispatcher) {
-        val store = provideDownloadUIStore(BrowserState(downloads = mapOf("1" to downloadState1)))
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("mozilla.com")
+
+        val store = provideDownloadUIStore(
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1)),
+            getDeleteBehavior = { DeleteDownloadBehavior.DELETE_FROM_DEVICE },
+        )
 
         val deleteItemSet = setOf(fileItem1.id)
         val expectedUIStateBeforeDeleteAction = DownloadUIState(
@@ -321,13 +344,14 @@ class DownloadUIStoreTest {
             items = listOf(fileItem1),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = deleteItemSet,
+            deletionSnackbarState = DownloadUIState.SnackbarState.UndoDeletion(setOf(fileItem1)),
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(expectedUIStateBeforeDeleteAction, store.state)
 
-        store.dispatch(DownloadUIAction.AddPendingDeletionSet(deleteItemSet))
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem1)))
         assertEquals(store.state.pendingDeletionIds, deleteItemSet)
         assertEquals(expectedUIStateAfterDeleteAction, store.state)
 
@@ -337,9 +361,55 @@ class DownloadUIStoreTest {
     }
 
     @Test
-    fun deleteOneElementAndCancelBeforeDelayExpires() = runTest(testDispatcher) {
+    fun deleteOneElementWithConfirmationDialog() = runTest(testDispatcher) {
         val store = provideDownloadUIStore(
-            BrowserState(downloads = mapOf("1" to downloadState1)),
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1)),
+            getDeleteBehavior = { DeleteDownloadBehavior.ASK_WHEN_DELETING },
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem1)))
+
+        assertEquals(emptySet<String>(), store.state.pendingDeletionIds)
+        assertEquals(DownloadUIState.DialogState.DeleteConfirmation(setOf(fileItem1)), store.state.dialogState)
+
+        store.dispatch(DownloadUIAction.AddPendingDeletionSet(setOf(fileItem1), removeFromDisk = true))
+
+        assertEquals(setOf(fileItem1.id), store.state.pendingDeletionIds)
+        assertEquals(DownloadUIState.DialogState.None, store.state.dialogState)
+        assertEquals(DownloadUIState.Mode.Normal, store.state.mode)
+    }
+
+    @Test
+    fun deleteMultipleElementsWithConfirmationDialog() = runTest(testDispatcher) {
+        val store = provideDownloadUIStore(
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1, "2" to downloadState2)),
+            getDeleteBehavior = { DeleteDownloadBehavior.ASK_WHEN_DELETING },
+        )
+
+        store.dispatch(DownloadUIAction.AddItemForRemoval(fileItem1))
+        store.dispatch(DownloadUIAction.AddItemForRemoval(fileItem2))
+
+        val itemsToDelete = setOf(fileItem1, fileItem2)
+        store.dispatch(DownloadUIAction.RequestDelete(itemsToDelete))
+        assertEquals(emptySet<String>(), store.state.pendingDeletionIds)
+        assertEquals(DownloadUIState.DialogState.DeleteConfirmation(itemsToDelete), store.state.dialogState)
+
+        store.dispatch(DownloadUIAction.AddPendingDeletionSet(itemsToDelete, removeFromDisk = true))
+
+        assertEquals(setOf(fileItem1.id, fileItem2.id), store.state.pendingDeletionIds)
+        assertEquals(DownloadUIState.DialogState.None, store.state.dialogState)
+        assertEquals(DownloadUIState.Mode.Normal, store.state.mode)
+    }
+
+    @Test
+    fun deleteOneElementAndCancelBeforeDelayExpires() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("mozilla.com")
+
+        val store = provideDownloadUIStore(
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1)),
+            getDeleteBehavior = { DeleteDownloadBehavior.DELETE_FROM_DEVICE },
         )
 
         val deleteItemSet = setOf("1")
@@ -353,13 +423,14 @@ class DownloadUIStoreTest {
             items = listOf(fileItem1),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = deleteItemSet,
+            deletionSnackbarState = DownloadUIState.SnackbarState.UndoDeletion(setOf(fileItem1)),
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(expectedUIStateBeforeDeleteAction, store.state)
 
-        store.dispatch(DownloadUIAction.AddPendingDeletionSet(deleteItemSet))
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem1)))
         testDispatcher.scheduler.runCurrent()
 
         assertEquals(expectedUIStateAfterDeleteAction, store.state)
@@ -375,8 +446,11 @@ class DownloadUIStoreTest {
 
     @Test
     fun deleteOneElementAndCancelAfterDelayExpired() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("mozilla.com")
+
         val store = provideDownloadUIStore(
-            BrowserState(downloads = mapOf("1" to downloadState1)),
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1)),
+            getDeleteBehavior = { DeleteDownloadBehavior.DELETE_FROM_DEVICE },
         )
 
         val expectedUIStateBeforeDeleteAction = DownloadUIState(
@@ -388,19 +462,21 @@ class DownloadUIStoreTest {
             items = listOf(fileItem1),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = setOf("1"),
+            deletionSnackbarState = DownloadUIState.SnackbarState.UndoDeletion(setOf(fileItem1)),
         )
 
         val expectedUIStateAfterDeleteActionAfterPendingDeleteTimeout = DownloadUIState(
             items = listOf(fileItem1),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = emptySet(),
+            deletionSnackbarState = DownloadUIState.SnackbarState.None,
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(expectedUIStateBeforeDeleteAction, store.state)
 
-        store.dispatch(DownloadUIAction.AddPendingDeletionSet(setOf("1")))
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem1)))
         assertEquals(expectedUIStateAfterDeleteActionWithPendingDelete, store.state)
 
         testDispatcher.scheduler.advanceTimeBy(testDelay.milliseconds)
@@ -412,8 +488,11 @@ class DownloadUIStoreTest {
 
     @Test
     fun deleteTwoElementsAndCancelTwice() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("mozilla.com")
+
         val store = provideDownloadUIStore(
-            BrowserState(downloads = mapOf("1" to downloadState1, "2" to downloadState2)),
+            initialState = BrowserState(downloads = mapOf("1" to downloadState1, "2" to downloadState2)),
+            getDeleteBehavior = { DeleteDownloadBehavior.DELETE_FROM_DEVICE },
         )
 
         val expectedUIStateBeforeDeleteAction = DownloadUIState(
@@ -425,23 +504,25 @@ class DownloadUIStoreTest {
             items = listOf(fileItem1, fileItem2),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = setOf("2"),
+            deletionSnackbarState = DownloadUIState.SnackbarState.UndoDeletion(setOf(fileItem2)),
         )
         val expectedUIStateAfterSecondDeleteAction = DownloadUIState(
             items = listOf(fileItem1, fileItem2),
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = setOf("1", "2"),
+            deletionSnackbarState = DownloadUIState.SnackbarState.UndoDeletion(setOf(fileItem1)),
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(expectedUIStateBeforeDeleteAction, store.state)
 
-        store.dispatch(DownloadUIAction.AddPendingDeletionSet(setOf("2")))
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem2)))
         testDispatcher.scheduler.runCurrent()
 
         assertEquals(expectedUIStateAfterFirstDeleteAction, store.state)
 
-        store.dispatch(DownloadUIAction.AddPendingDeletionSet(setOf("1")))
+        store.dispatch(DownloadUIAction.RequestDelete(setOf(fileItem1)))
         testDispatcher.scheduler.runCurrent()
 
         assertEquals(expectedUIStateAfterSecondDeleteAction, store.state)
@@ -449,16 +530,18 @@ class DownloadUIStoreTest {
         store.dispatch(DownloadUIAction.UndoPendingDeletion)
         testDispatcher.scheduler.runCurrent()
 
-        assertEquals(expectedUIStateAfterFirstDeleteAction, store.state)
+        assertEquals(expectedUIStateAfterFirstDeleteAction.copy(deletionSnackbarState = DownloadUIState.SnackbarState.None), store.state)
 
         store.dispatch(DownloadUIAction.UndoPendingDeletion)
         testDispatcher.scheduler.runCurrent()
 
-        assertEquals(expectedUIStateAfterFirstDeleteAction, store.state)
+        assertEquals(expectedUIStateAfterFirstDeleteAction.copy(deletionSnackbarState = DownloadUIState.SnackbarState.None), store.state)
     }
 
     @Test
     fun `WHEN downloads store is initialised THEN downloads state is updated to be sorted by created time`() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
         val fakeDateTimeProvider = FakeDateTimeProvider(LocalDate.of(2025, 5, 31))
         val zoneId = fakeDateTimeProvider.currentZoneId()
 
@@ -470,7 +553,6 @@ class DownloadUIStoreTest {
                 fileName = "1.pdf",
                 status = DownloadState.Status.COMPLETED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -481,7 +563,6 @@ class DownloadUIStoreTest {
                 fileName = "2.pdf",
                 status = DownloadState.Status.FAILED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -492,7 +573,6 @@ class DownloadUIStoreTest {
                 fileName = "3.pdf",
                 status = DownloadState.Status.COMPLETED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "text/plain",
             ),
@@ -503,7 +583,6 @@ class DownloadUIStoreTest {
                 fileName = "4.pdf",
                 status = DownloadState.Status.PAUSED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -514,7 +593,6 @@ class DownloadUIStoreTest {
                 fileName = "5.pdf",
                 status = DownloadState.Status.DOWNLOADING,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -525,7 +603,6 @@ class DownloadUIStoreTest {
                 fileName = "6.pdf",
                 status = DownloadState.Status.INITIATED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -540,6 +617,7 @@ class DownloadUIStoreTest {
             middleware = listOf(
                 DownloadUIMapperMiddleware(
                     browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
                     fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
                     scope = testScope,
                     dateTimeProvider = fakeDateTimeProvider,
@@ -556,6 +634,7 @@ class DownloadUIStoreTest {
                     fileName = "6.pdf",
                     filePath = "downloads/6.pdf",
                     displayedShortUrl = "google.com",
+                    directoryPath = "downloads",
                     contentType = "application/pdf",
                     status = FileItem.Status.Initiated,
                     timeCategory = TimeCategory.IN_PROGRESS,
@@ -567,6 +646,7 @@ class DownloadUIStoreTest {
                     fileName = "5.pdf",
                     filePath = "downloads/5.pdf",
                     displayedShortUrl = "google.com",
+                    directoryPath = "downloads",
                     contentType = "application/pdf",
                     status = FileItem.Status.Downloading(progress = 0f),
                     timeCategory = TimeCategory.IN_PROGRESS,
@@ -578,6 +658,7 @@ class DownloadUIStoreTest {
                     fileName = "4.pdf",
                     filePath = "downloads/4.pdf",
                     displayedShortUrl = "google.com",
+                    directoryPath = "downloads",
                     contentType = "application/pdf",
                     status = FileItem.Status.Paused(progress = 0f),
                     timeCategory = TimeCategory.IN_PROGRESS,
@@ -589,6 +670,7 @@ class DownloadUIStoreTest {
                     fileName = "2.pdf",
                     filePath = "downloads/2.pdf",
                     displayedShortUrl = "google.com",
+                    directoryPath = "downloads",
                     contentType = "application/pdf",
                     status = FileItem.Status.Failed,
                     timeCategory = TimeCategory.IN_PROGRESS,
@@ -603,6 +685,7 @@ class DownloadUIStoreTest {
                     description = "Completed",
                     displayedShortUrl = "google.com",
                     contentType = "text/plain",
+                    directoryPath = "downloads",
                     status = FileItem.Status.Completed,
                     timeCategory = TimeCategory.TODAY,
                 ),
@@ -615,6 +698,7 @@ class DownloadUIStoreTest {
                     description = "Completed",
                     displayedShortUrl = "google.com",
                     contentType = "application/pdf",
+                    directoryPath = "downloads",
                     status = FileItem.Status.Completed,
                     timeCategory = TimeCategory.OLDER,
                 ),
@@ -628,6 +712,8 @@ class DownloadUIStoreTest {
 
     @Test
     fun `GIVEN a download was cancelled WHEN downloading the same file THEN only the downloading download item is displayed`() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
         val downloads = mapOf(
             "1" to DownloadState(
                 id = "1",
@@ -636,7 +722,6 @@ class DownloadUIStoreTest {
                 fileName = "1.pdf",
                 status = DownloadState.Status.CANCELLED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -646,7 +731,6 @@ class DownloadUIStoreTest {
                 url = "https://www.google.com",
                 fileName = "1.pdf",
                 status = DownloadState.Status.DOWNLOADING,
-                destinationDirectory = "",
                 contentLength = 10000,
                 directoryPath = "downloads",
                 contentType = "application/pdf",
@@ -659,6 +743,7 @@ class DownloadUIStoreTest {
             middleware = listOf(
                 DownloadUIMapperMiddleware(
                     browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
                     fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
                     scope = testScope,
                 ),
@@ -673,6 +758,7 @@ class DownloadUIStoreTest {
                     fileName = "1.pdf",
                     filePath = "downloads/1.pdf",
                     description = "Downloading",
+                    directoryPath = "downloads",
                     displayedShortUrl = "google.com",
                     contentType = "application/pdf",
                     status = FileItem.Status.Downloading(0f),
@@ -688,6 +774,8 @@ class DownloadUIStoreTest {
 
     @Test
     fun `GIVEN two downloads with identical file name and identical download status WHEN getting itemsState THEN only one download item is displayed`() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
         val downloads = mapOf(
             "1" to DownloadState(
                 id = "1",
@@ -696,7 +784,6 @@ class DownloadUIStoreTest {
                 fileName = "1.pdf",
                 status = DownloadState.Status.COMPLETED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -706,7 +793,6 @@ class DownloadUIStoreTest {
                 url = "https://www.google.com",
                 fileName = "1.pdf",
                 status = DownloadState.Status.COMPLETED,
-                destinationDirectory = "",
                 contentLength = 10000,
                 directoryPath = "downloads",
                 contentType = "application/pdf",
@@ -719,6 +805,7 @@ class DownloadUIStoreTest {
             middleware = listOf(
                 DownloadUIMapperMiddleware(
                     browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
                     fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
                     scope = testScope,
                 ),
@@ -728,11 +815,12 @@ class DownloadUIStoreTest {
             listOf(
                 HeaderItem(TimeCategory.OLDER),
                 FileItem(
-                    id = "1",
+                    id = "2",
                     url = "https://www.google.com",
                     fileName = "1.pdf",
                     filePath = "downloads/1.pdf",
                     description = "Completed",
+                    directoryPath = "downloads",
                     displayedShortUrl = "google.com",
                     contentType = "application/pdf",
                     status = FileItem.Status.Completed,
@@ -741,22 +829,23 @@ class DownloadUIStoreTest {
             ),
         )
 
-        testScheduler.advanceUntilIdle()
+        testDispatcher.scheduler.advanceUntilIdle()
 
         assertEquals(expectedList, downloadsStore.state.itemsState)
     }
 
     @Test
-    fun `GIVEN two downloads with identical file name and different download status WHEN getting itemsState THEN both download items are displayed`() = runTest(testDispatcher) {
+    fun `GIVEN two downloads with identical file name and different directory path WHEN getting itemsState THEN both download items should be displayed`() {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
         val downloads = mapOf(
             "1" to DownloadState(
                 id = "1",
                 createdTime = 1,
                 url = "https://www.google.com",
                 fileName = "1.pdf",
-                status = DownloadState.Status.FAILED,
+                status = DownloadState.Status.COMPLETED,
                 contentLength = 10000,
-                destinationDirectory = "",
                 directoryPath = "downloads",
                 contentType = "application/pdf",
             ),
@@ -765,8 +854,81 @@ class DownloadUIStoreTest {
                 createdTime = 2,
                 url = "https://www.google.com",
                 fileName = "1.pdf",
-                status = DownloadState.Status.DOWNLOADING,
-                destinationDirectory = "",
+                status = DownloadState.Status.COMPLETED,
+                contentLength = 10000,
+                directoryPath = "downloads2",
+                contentType = "application/pdf",
+            ),
+        )
+        val browserStore = BrowserStore(initialState = BrowserState(downloads = downloads))
+
+        val downloadsStore = DownloadUIStore(
+            initialState = DownloadUIState.INITIAL,
+            middleware = listOf(
+                DownloadUIMapperMiddleware(
+                    browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
+                    fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
+                    scope = testScope,
+                ),
+            ),
+        )
+        val expectedList = DownloadUIState.ItemsState.Items(
+            listOf(
+                HeaderItem(TimeCategory.OLDER),
+                FileItem(
+                    id = "2",
+                    url = "https://www.google.com",
+                    fileName = "1.pdf",
+                    filePath = "downloads2/1.pdf",
+                    description = "Completed",
+                    directoryPath = "downloads2",
+                    displayedShortUrl = "google.com",
+                    contentType = "application/pdf",
+                    status = FileItem.Status.Completed,
+                    timeCategory = TimeCategory.OLDER,
+                ),
+                FileItem(
+                    id = "1",
+                    url = "https://www.google.com",
+                    fileName = "1.pdf",
+                    filePath = "downloads/1.pdf",
+                    description = "Completed",
+                    directoryPath = "downloads",
+                    displayedShortUrl = "google.com",
+                    contentType = "application/pdf",
+                    status = FileItem.Status.Completed,
+                    timeCategory = TimeCategory.OLDER,
+                ),
+            ),
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(expectedList, downloadsStore.state.itemsState)
+    }
+
+    @Test
+    fun `GIVEN two downloads with the same file name ,directory path and status WHEN getting itemsState THEN the newest download item is displayed`() {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
+        val downloads = mapOf(
+            "1" to DownloadState(
+                id = "1",
+                createdTime = 1,
+                url = "https://www.google.com",
+                fileName = "1.pdf",
+                status = DownloadState.Status.COMPLETED,
+                contentLength = 10000,
+                directoryPath = "downloads",
+                contentType = "application/pdf",
+            ),
+            "2" to DownloadState(
+                id = "2",
+                createdTime = 2,
+                url = "https://www.google.com",
+                fileName = "1.pdf",
+                status = DownloadState.Status.COMPLETED,
                 contentLength = 10000,
                 directoryPath = "downloads",
                 contentType = "application/pdf",
@@ -779,6 +941,69 @@ class DownloadUIStoreTest {
             middleware = listOf(
                 DownloadUIMapperMiddleware(
                     browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
+                    fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
+                    scope = testScope,
+                ),
+            ),
+        )
+        val expectedList = DownloadUIState.ItemsState.Items(
+            listOf(
+                HeaderItem(TimeCategory.OLDER),
+                FileItem(
+                    id = "2",
+                    url = "https://www.google.com",
+                    fileName = "1.pdf",
+                    filePath = "downloads/1.pdf",
+                    description = "Completed",
+                    directoryPath = "downloads",
+                    displayedShortUrl = "google.com",
+                    contentType = "application/pdf",
+                    status = FileItem.Status.Completed,
+                    timeCategory = TimeCategory.OLDER,
+                ),
+            ),
+        )
+
+        testDispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(expectedList, downloadsStore.state.itemsState)
+    }
+
+    @Test
+    fun `GIVEN two downloads with identical file name and different download status WHEN getting itemsState THEN both download items are displayed`() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("google.com")
+
+        val downloads = mapOf(
+            "1" to DownloadState(
+                id = "1",
+                createdTime = 1,
+                url = "https://www.google.com",
+                fileName = "1.pdf",
+                status = DownloadState.Status.FAILED,
+                contentLength = 10000,
+                directoryPath = "downloads",
+                contentType = "application/pdf",
+            ),
+            "2" to DownloadState(
+                id = "2",
+                createdTime = 2,
+                url = "https://www.google.com",
+                fileName = "1.pdf",
+                status = DownloadState.Status.DOWNLOADING,
+                contentLength = 10000,
+                directoryPath = "downloads",
+                contentType = "application/pdf",
+            ),
+        )
+        val browserStore = BrowserStore(initialState = BrowserState(downloads = downloads))
+
+        val downloadsStore = DownloadUIStore(
+            initialState = DownloadUIState.INITIAL,
+            middleware = listOf(
+                DownloadUIMapperMiddleware(
+                    browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
                     fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
                     scope = testScope,
                 ),
@@ -793,6 +1018,7 @@ class DownloadUIStoreTest {
                     fileName = "1.pdf",
                     filePath = "downloads/1.pdf",
                     description = "Downloading",
+                    directoryPath = "downloads",
                     displayedShortUrl = "google.com",
                     contentType = "application/pdf",
                     status = FileItem.Status.Downloading(0f),
@@ -804,6 +1030,7 @@ class DownloadUIStoreTest {
                     fileName = "1.pdf",
                     filePath = "downloads/1.pdf",
                     description = "Failed",
+                    directoryPath = "downloads",
                     displayedShortUrl = "google.com",
                     contentType = "application/pdf",
                     status = FileItem.Status.Failed,
@@ -1100,6 +1327,8 @@ class DownloadUIStoreTest {
 
     @Test
     fun `GIVEN any state WHEN RenameFileConfirmed THEN DownloadUIState is updated with the new file state`() = runTest(testDispatcher) {
+        every { publicSuffixList.getPublicSuffixPlusOne(any()) } returns CompletableDeferred("mozilla.com")
+
         val fileName = "1.pdf"
         val filePath = folder.newFile(fileName).path
 
@@ -1111,6 +1340,7 @@ class DownloadUIStoreTest {
             description = "Completed",
             contentType = "application/pdf",
             displayedShortUrl = "mozilla.com",
+            directoryPath = folder.root.path,
             status = FileItem.Status.Completed,
             timeCategory = TimeCategory.TODAY,
         )
@@ -1121,7 +1351,6 @@ class DownloadUIStoreTest {
             fileName = fileName,
             status = DownloadState.Status.COMPLETED,
             contentLength = 77,
-            destinationDirectory = folder.root.path,
             directoryPath = folder.root.path,
             contentType = "application/pdf",
         )
@@ -1133,9 +1362,15 @@ class DownloadUIStoreTest {
         val store = DownloadUIStore(
             initialState = DownloadUIState.INITIAL,
             middleware = listOf(
-                DownloadUIRenameMiddleware(browserStore = browserStore, scope = testScope, mainDispatcher = testDispatcher),
+                DownloadUIRenameMiddleware(
+                    browserStore = browserStore,
+                    scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
+                    mainDispatcher = testDispatcher,
+                    ),
                 DownloadUIMapperMiddleware(
                     browserStore = browserStore,
+                    publicSuffixList = publicSuffixList,
                     scope = testScope,
                     fileItemDescriptionProvider = FakeFileItemDescriptionProvider(),
                     dateTimeProvider = fakeDateTimeProvider,
@@ -1186,6 +1421,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1234,6 +1470,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1262,12 +1499,6 @@ class DownloadUIStoreTest {
         val currentName = "1.pdf"
         val newName = "renamed.pdf"
 
-        val from = File(dirFile, currentName).apply { writeText("data") }
-        val to = File(dirFile, newName)
-
-        assertTrue(from.exists())
-        assertFalse(to.exists())
-
         val browserStore = BrowserStore(
             initialState = BrowserState(
                 downloads = mapOf(
@@ -1290,6 +1521,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1303,9 +1535,6 @@ class DownloadUIStoreTest {
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
-
-        assertFalse(from.exists())
-        assertTrue(to.exists())
 
         assertEquals(newName, browserStore.state.downloads["1"]?.fileName)
 
@@ -1337,6 +1566,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1378,6 +1608,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1419,6 +1650,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1460,6 +1692,7 @@ class DownloadUIStoreTest {
                 DownloadUIRenameMiddleware(
                     browserStore = browserStore,
                     scope = testScope,
+                    downloadFileUtils = FakeDownloadFileUtils(),
                     mainDispatcher = testDispatcher,
                 ),
             ),
@@ -1479,6 +1712,7 @@ class DownloadUIStoreTest {
 
     private fun provideDownloadUIStore(
         initialState: BrowserState = BrowserState(),
+        getDeleteBehavior: () -> DeleteDownloadBehavior = { DeleteDownloadBehavior.ASK_WHEN_DELETING },
     ): DownloadUIStore {
         val browserStore = BrowserStore(initialState = initialState)
 
@@ -1486,12 +1720,14 @@ class DownloadUIStoreTest {
             testDelay,
             DownloadsUseCases.RemoveDownloadUseCase(browserStore),
             testDispatcher,
+            getDeleteBehavior,
         )
 
         testDispatcher.scheduler.advanceUntilIdle()
 
         val downloadUIMapperMiddleware = DownloadUIMapperMiddleware(
             browserStore = browserStore,
+            publicSuffixList = publicSuffixList,
             fileItemDescriptionProvider = fakeFileItemDescriptionProvider,
             scope = testScope,
             dateTimeProvider = fakeDateTimeProvider,

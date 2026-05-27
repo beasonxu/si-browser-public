@@ -17,8 +17,6 @@ import org.mozilla.fenix.components.ReviewPromptAttemptResult.Displayed
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.Error
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.NotDisplayed
 import org.mozilla.fenix.components.ReviewPromptAttemptResult.Unknown
-import org.mozilla.fenix.ext.components
-import org.mozilla.fenix.ext.openToBrowser
 import org.mozilla.fenix.settings.SupportUtils
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -37,12 +35,12 @@ class PlayStoreReviewPromptController(
     /**
      * Launch the in-app review flow, unless we've hit the quota.
      */
-    suspend fun tryPromptReview(activity: Activity,onNotDisplayed: () -> Unit = {}, onError: () -> Unit = {},) {}
+    suspend fun tryPromptReview(activity: Activity, onNotDisplayed: () -> Unit = {}, onError: () -> Unit = {},) {}
 
     /**
      * Try to launch the play store review flow.
      */
-    fun tryLaunchPlayStoreReview(activity: Activity) {}
+    fun tryLaunchPlayStoreReview(activity: Activity, openInNewTab: (url: String) -> Unit,) {}
 
     companion object {
         /**

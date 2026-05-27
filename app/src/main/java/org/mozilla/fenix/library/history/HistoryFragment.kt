@@ -100,6 +100,7 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.addons.showSnackBar
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.AppStore
+import org.mozilla.fenix.components.LensFeature
 import org.mozilla.fenix.components.QrScanFenixFeature
 import org.mozilla.fenix.components.VoiceSearchFeature
 import org.mozilla.fenix.components.appstate.AppAction
@@ -107,6 +108,7 @@ import org.mozilla.fenix.components.history.DefaultPagedHistoryProvider
 import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
 import org.mozilla.fenix.databinding.FragmentHistoryBinding
+import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getRootView
 import org.mozilla.fenix.ext.nav
@@ -133,15 +135,22 @@ import org.mozilla.fenix.search.SearchFragmentAction.SuggestionSelected
 import org.mozilla.fenix.search.SearchFragmentStore
 import org.mozilla.fenix.search.awesomebar.DeleteHistoryEntryDelegate
 import org.mozilla.fenix.search.createInitialSearchFragmentState
-import org.mozilla.fenix.tabstray.Page
+import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.utils.allowUndo
 import org.mozilla.fenix.GleanMetrics.History as GleanHistory
 
 private const val MATERIAL_DESIGN_SCRIM = "#52000000"
 
+/**
+ * Browser history screen.
+ */
 @SuppressWarnings("TooManyFunctions", "LargeClass")
-class HistoryFragment : LibraryPageFragment<History>(), UserInteractionHandler, MenuProvider {
+class HistoryFragment :
+    LibraryPageFragment<History>(),
+    UserInteractionHandler,
+    MenuProvider,
+    SystemInsetsPaddedFragment {
     private lateinit var historyStore: HistoryFragmentStore
     private lateinit var searchStore: SearchFragmentStore
     private val toolbarStore by buildToolbarStore()
@@ -181,6 +190,12 @@ class HistoryFragment : LibraryPageFragment<History>(), UserInteractionHandler, 
     private val voiceSearchLauncher: ActivityResultLauncher<Intent> =
         registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
             voiceSearchFeature?.get()?.handleVoiceSearchResult(result.resultCode, result.data)
+        }
+    private var lensFeature: ViewBoundFeatureWrapper<LensFeature>? =
+        ViewBoundFeatureWrapper<LensFeature>()
+    private val lensLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            lensFeature?.get()?.handleImageResult(result.resultCode, result.data)
         }
 
     private val menuBinding by lazy {
@@ -296,6 +311,7 @@ class HistoryFragment : LibraryPageFragment<History>(), UserInteractionHandler, 
         if (requireContext().settings().shouldUseComposableToolbar) {
             qrScanFenixFeature = QrScanFenixFeature.register(this, qrScanLauncher)
             voiceSearchFeature = VoiceSearchFeature.register(this, voiceSearchLauncher)
+            lensFeature = LensFeature.register(this, lensLauncher)
         }
 
         consumeFrom(historyStore) {
@@ -837,6 +853,7 @@ class HistoryFragment : LibraryPageFragment<History>(), UserInteractionHandler, 
                 BrowserStoreToFenixSearchMapperMiddleware(
                     browserStore = requireComponents.core.store,
                     scope = lifecycleScope,
+                    appStore = requireComponents.appStore,
                 ),
                 FenixSearchMiddleware(
                     fragment = this@HistoryFragment,

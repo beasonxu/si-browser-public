@@ -23,6 +23,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -180,6 +181,9 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
                 onRequestDismiss = ::dismiss,
                 handlebarContentDescription = "",
             ) {
+                val websiteInfoState by remember {
+                    store.stateFlow.map { state -> state.websiteInfoState }
+                }.collectAsState(initial = store.state.websiteInfoState)
                 val baseDomain by remember {
                     store.stateFlow.map { state -> state.baseDomain }
                 }.collectAsState(initial = null)
@@ -202,6 +206,10 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
                     store.stateFlow.map { state -> state.websitePermissionsState.values }
                 }.collectAsState(initial = listOf())
                 val isGlobalTrackingProtectionEnabled = settings.shouldUseTrackingProtection
+                val showIpProtection = settings.isIPProtectionAvailable
+                val ipProtectionMenuState by remember {
+                    store.stateFlow.map { state -> state.ipProtectionMenuState }
+                }.collectAsState(initial = store.state.ipProtectionMenuState)
 
                 permissionsCallback = { isGranted: Map<String, Boolean> ->
                     if (isGranted.values.all { it }) {
@@ -257,6 +265,10 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
                     )
                 }
 
+                LaunchedEffect(Unit) {
+                    store.dispatch(TrustPanelAction.RequestQWAC)
+                }
+
                 AnimatedContent(
                     targetState = contentState,
                     transitionSpec = trustPanelTransitionSpec(contentState),
@@ -265,11 +277,13 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
                     when (route) {
                         Route.ProtectionPanel -> {
                             ProtectionPanel(
-                                websiteInfoState = store.state.websiteInfoState,
+                                websiteInfoState = websiteInfoState,
+                                ipProtectionMenuState = ipProtectionMenuState,
                                 icon = sessionState?.content?.icon,
                                 isTrackingProtectionEnabled = isTrackingProtectionEnabled,
                                 isGlobalTrackingProtectionEnabled = isGlobalTrackingProtectionEnabled,
                                 isLocalPdf = args.isLocalPdf,
+                                showIPProtection = showIpProtection,
                                 numberOfTrackersBlocked = numberOfTrackersBlocked,
                                 websitePermissions = websitePermissions.filter { it.isVisible },
                                 onTrackerBlockedMenuClick = {
@@ -293,6 +307,15 @@ class TrustPanelFragment : BottomSheetDialogFragment() {
                                 },
                                 onViewCertificateClick = {
                                     store.dispatch(TrustPanelAction.Navigate.SecurityCertificate)
+                                },
+                                onViewQWACClick = {
+                                    store.dispatch(TrustPanelAction.Navigate.QWAC)
+                                },
+                                onIPProtectionToggle = {
+                                    // will be implemented in https://bugzilla.mozilla.org/show_bug.cgi?id=2030143
+                                },
+                                onIPProtectionNavigate = {
+                                    store.dispatch(TrustPanelAction.Navigate.IPProtectionSettings)
                                 },
                             )
                         }

@@ -83,7 +83,6 @@ import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.ReaderMode
 import org.mozilla.fenix.GleanMetrics.Translations
 import org.mozilla.fenix.R
-import org.mozilla.fenix.browser.BrowserAnimator
 import org.mozilla.fenix.browser.BrowserFragmentDirections
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode.Normal
@@ -129,8 +128,8 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.settings.ShortcutType
 import org.mozilla.fenix.settings.quicksettings.protections.cookiebanners.getCookieBannerUIMode
-import org.mozilla.fenix.tabstray.Page
 import org.mozilla.fenix.tabstray.ext.isActiveDownload
+import org.mozilla.fenix.tabstray.redux.state.Page
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.lastSavedFolderCache
 import mozilla.components.browser.toolbar.R as toolbarR
@@ -201,7 +200,6 @@ internal sealed class PageEndActionsInteractions(override val source: Source) : 
  * @param navController [NavController] to use for navigating to other in-app destinations.
  * @param browsingModeManager [BrowsingModeManager] for querying the current browsing mode.
  * @param readerModeController [ReaderModeController] for showing or hiding the reader view UX.
- * @param browserAnimator Helper for animating the browser content when navigating to other screens.
  * @param thumbnailsFeature [BrowserThumbnails] for requesting screenshots of the current tab.
  * @param isWideScreen Callback for checking if the screen is wide.
  * @param isTallScreen Callback for checking if the screen is tall.
@@ -227,7 +225,6 @@ class BrowserToolbarMiddleware(
     private val navController: NavController,
     private val browsingModeManager: BrowsingModeManager,
     private val readerModeController: ReaderModeController,
-    private val browserAnimator: BrowserAnimator,
     private val thumbnailsFeature: () -> BrowserThumbnails?,
     private val isWideScreen: () -> Boolean,
     private val isTallScreen: () -> Boolean,
@@ -362,7 +359,7 @@ class BrowserToolbarMiddleware(
                         ),
                     )
                 } else {
-                    store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms)))
+                    store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(searchTerms), true))
                     appStore.dispatch(SearchStarted(selectedTab.id))
                 }
             }
@@ -382,7 +379,7 @@ class BrowserToolbarMiddleware(
                 }
             }
             is PasteFromClipboardClicked -> {
-                store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(clipboard.text.orEmpty())))
+                store.dispatch(SearchQueryUpdated(BrowserToolbarQuery(clipboard.text.orEmpty()), true))
                 appStore.dispatch(SearchStarted(browserStore.state.selectedTabId))
             }
             is LoadFromClipboardClicked -> {
@@ -495,8 +492,17 @@ class BrowserToolbarMiddleware(
 
                 selectedTab?.let {
                     scope.launch(ioDispatcher) {
-                        val parentGuid = settings.lastSavedFolderCache.getGuid() ?: BookmarkRoot.Mobile.id
-                        val parentNode = bookmarksStorage.getBookmark(parentGuid).getOrNull()
+                        val targetParentFolderId =
+                            settings.lastSavedFolderCache.getGuid() ?: BookmarkRoot.Mobile.id
+
+                        val parentNode = bookmarksStorage.getBookmark(targetParentFolderId).getOrNull()
+                            ?: bookmarksStorage.getBookmark(BookmarkRoot.Mobile.id).getOrNull()
+                        val parentGuid = parentNode?.guid ?: BookmarkRoot.Mobile.id
+
+                        if (targetParentFolderId != parentGuid) {
+                            settings.lastSavedFolderCache.setGuid(null)
+                        }
+
                         val guidToEdit = useCases.bookmarksUseCases.addBookmark(
                             url = selectedTab.content.url,
                             title = selectedTab.content.title,
@@ -575,9 +581,7 @@ class BrowserToolbarMiddleware(
                     useCases.fenixBrowserUseCases.navigateToHomepage()
                 } else {
                     val directions = BrowserFragmentDirections.actionGlobalHome()
-                    browserAnimator.captureEngineViewAndDrawStatically {
-                        navController.navigate(directions)
-                    }
+                    navController.navigate(directions)
                 }
                 next(action)
             }
@@ -742,12 +746,13 @@ class BrowserToolbarMiddleware(
         val isWideWindow = isWideScreen()
         val isTallWindow = isTallScreen()
         val shouldUseExpandedToolbar = settings.shouldUseExpandedToolbar
-        val primarySlotAction = ShortcutType.fromValue(settings.toolbarSimpleShortcut)
-            ?.toToolbarAction() ?: ToolbarAction.NewTab
+        val primarySlotAction = ShortcutType.fromValue(settings.toolbarSimpleShortcut)?.toToolbarAction()
 
-        val configs = listOf(
-            ToolbarActionConfig(primarySlotAction) {
-                !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
+        val configs = listOfNotNull(
+            primarySlotAction?.let {
+                ToolbarActionConfig(it) {
+                    !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
+                }
             },
             ToolbarActionConfig(ToolbarAction.TabCounter) {
                 !shouldUseExpandedToolbar || !isTallWindow || isWideWindow
@@ -812,7 +817,7 @@ class BrowserToolbarMiddleware(
                     onClick = AddNewTab(source),
                 ),
                 BrowserToolbarMenuButton(
-                    icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_24),
+                    icon = DrawableResIcon(iconsR.drawable.mozac_ic_private_mode_fill_24),
                     text = StringResText(tabcounterR.string.mozac_browser_menu_new_private_tab),
                     contentDescription =
                         StringResContentDescription(tabcounterR.string.mozac_browser_menu_new_private_tab),
@@ -841,7 +846,13 @@ class BrowserToolbarMiddleware(
     private fun openNewTab(
         browsingMode: BrowsingMode,
     ) {
-        if (settings.enableHomepageAsNewTab) {
+        if (!settings.shouldUseDefaultHomepage) {
+            useCases.fenixBrowserUseCases.loadUrlOrSearch(
+                searchTermOrURL = settings.customHomepageUrl,
+                newTab = true,
+                private = browsingMode.isPrivate
+            )
+        } else if (settings.enableHomepageAsNewTab) {
             useCases.fenixBrowserUseCases.addNewHomepageTab(
                 private = browsingMode.isPrivate,
             )
@@ -1302,5 +1313,6 @@ class BrowserToolbarMiddleware(
         ShortcutType.TRANSLATE -> ToolbarAction.Translate
         ShortcutType.HOMEPAGE -> ToolbarAction.Homepage
         ShortcutType.BACK -> ToolbarAction.Back
+        ShortcutType.NONE -> null
     }
 }

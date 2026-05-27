@@ -84,55 +84,66 @@ class PythonEnvsPlugin implements Plugin<Project> {
     void apply(Project project) {
         PythonEnvsExtension envs = project.extensions.create("envs", PythonEnvsExtension.class)
 
+        def buildCondas = project.tasks.register("build_condas") {
+            group = "build"
+            description = "Builds all configured conda environments"
+            onlyIf { !envs.condas.empty }
+        }
+
         project.afterEvaluate {
+            envs.condas.each { Conda env ->
+                String taskName = "Bootstrap_${env.type}_${env.name}"
 
-            Task conda_task = project.tasks.create(name: "build_condas") {
+                def bootstrapTask = project.tasks.register(taskName) {
+                    group = "setup"
 
-                onlyIf { !envs.condas.empty }
+                    onlyIf {
+                        !env.envDir.exists() || isPythonInvalid(project, env)
+                    }
 
-                envs.condas.each { Conda env ->
-                    dependsOn project.tasks.create(name: "Bootstrap_${env.type}_'$env.name'") {
-                        onlyIf {
-                            !env.envDir.exists() || isPythonInvalid(project, env)
-                        }
+                    def execOps = project.services.get(ExecOperations)
 
-                        doFirst {
-                            project.buildDir.mkdir()
-                            env.envDir.mkdirs()
-                            env.envDir.deleteDir()
-                        }
+                    doFirst {
+                        File bDir = project.layout.buildDirectory.asFile.get()
+                        if (!bDir.exists()) bDir.mkdirs()
+                        env.envDir.mkdirs()
+                        env.envDir.deleteDir()
+                    }
 
-                        def execOps = services.get(ExecOperations)
-                        doLast {
-                            URL urlToConda = getUrlToDownloadConda(env)
-                            File installer = new File(project.buildDir, urlToConda.toString().split("/").last())
+                    doLast {
+                        URL urlToConda = getUrlToDownloadConda(env)
+                        File installer = new File(project.layout.buildDirectory.asFile.get(), urlToConda.toString().split("/").last())
 
-                            if (!installer.exists()) {
-                                project.logger.quiet("Downloading $installer.name")
-                                project.ant.get(dest: installer) {
-                                    url(url: urlToConda)
-                                }
+                        if (!installer.exists()) {
+                            project.logger.quiet("Downloading ${installer.name}")
+                            project.ant.get(dest: installer) {
+                                url(url: urlToConda)
                             }
-
-                            project.logger.quiet("Bootstraping to $env.envDir")
-                            execOps.exec {
-                                if (isWindows) {
-                                    commandLine installer, "/InstallationType=JustMe", "/AddToPath=0", "/RegisterPython=0", "/S", "/D=$env.envDir"
-                                } else {
-                                    commandLine "bash", installer, "-b", "-p", env.envDir
-                                }
-                            }
-
-                            pipInstall(project, env, env.packages, execOps)
-                            condaInstall(project, env, env.condaPackages, execOps)
                         }
+
+                        project.logger.quiet("Bootstrapping to ${env.envDir}")
+                        execOps.exec {
+                            if (isWindows) {
+                                commandLine installer, "/InstallationType=JustMe", "/AddToPath=0", "/RegisterPython=0", "/S", "/D=${env.envDir}"
+                            } else {
+                                commandLine "bash", installer, "-b", "-p", env.envDir
+                            }
+                        }
+
+                        pipInstall(project, env, env.packages, execOps)
+                        condaInstall(project, env, env.condaPackages, execOps)
                     }
                 }
-            }
 
-            project.tasks.create(name: 'build_envs') {
-                dependsOn conda_task
+                buildCondas.configure {
+                    dependsOn bootstrapTask
+                }
             }
+        }
+
+        project.tasks.register('build_envs') {
+            group = "build"
+            dependsOn buildCondas
         }
     }
 

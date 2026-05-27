@@ -28,21 +28,25 @@ import androidx.test.espresso.contrib.RecyclerViewActions
 import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.espresso.matcher.ViewMatchers.hasDescendant
 import androidx.test.espresso.matcher.ViewMatchers.hasSibling
+import androidx.test.espresso.matcher.ViewMatchers.isDescendantOfA
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
 import androidx.test.espresso.matcher.ViewMatchers.withChild
 import androidx.test.espresso.matcher.ViewMatchers.withClassName
 import androidx.test.espresso.matcher.ViewMatchers.withContentDescription
 import androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility
 import androidx.test.espresso.matcher.ViewMatchers.withId
+import androidx.test.espresso.matcher.ViewMatchers.withTagValue
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiSelector
+import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
 import org.hamcrest.CoreMatchers
 import org.hamcrest.Matchers.allOf
 import org.hamcrest.Matchers.endsWith
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.mozilla.fenix.R
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.Constants.RETRY_COUNT
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.DataGenerationHelper.getAvailableSearchEngines
@@ -53,6 +57,7 @@ import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdContainingText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithText
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeShort
+import org.mozilla.fenix.helpers.TestHelper.appContext
 import org.mozilla.fenix.helpers.TestHelper.hasCousin
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.packageName
@@ -141,7 +146,9 @@ class SettingsSubMenuSearchRobot {
     }
 
     fun verifyManageShortcutsList(testRule: ComposeTestRule) {
-        val availableShortcutsEngines = getRegionSearchEnginesList() + getAvailableSearchEngines()
+        val defaultEngineId = appContext.components.core.store.state.search.selectedOrDefaultSearchEngine?.id
+        val availableShortcutsEngines = (getRegionSearchEnginesList() + getAvailableSearchEngines())
+            .filter { it.id != defaultEngineId }
 
         availableShortcutsEngines.forEach {
             Log.i(TAG, "verifyManageShortcutsList: Trying to verify that the ${it.name} alternative search engine is displayed")
@@ -659,6 +666,7 @@ private fun defaultSearchEngineOption(searchEngineName: String) =
         allOf(
             withId(R.id.radio_button),
             hasSibling(withText(searchEngineName)),
+            isDescendantOfA(withTagValue(CoreMatchers.equalTo(getStringResource(R.string.pref_key_search_engine_list)))),
         ),
     )
 

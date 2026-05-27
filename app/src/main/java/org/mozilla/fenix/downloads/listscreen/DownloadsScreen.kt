@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -32,6 +34,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -46,12 +49,17 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.PreviewParameter
+import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import mozilla.components.compose.base.annotation.FlexibleWindowLightDarkPreview
 import mozilla.components.compose.base.button.FloatingActionButton
+import mozilla.components.compose.base.button.TextButton
 import mozilla.components.compose.base.menu.DropdownMenu
 import mozilla.components.compose.base.menu.MenuItem
 import mozilla.components.compose.base.modifier.thenConditional
@@ -59,7 +67,9 @@ import mozilla.components.compose.base.snackbar.Snackbar
 import mozilla.components.compose.base.snackbar.displaySnackbar
 import mozilla.components.compose.base.text.Text
 import org.mozilla.fenix.R
+import org.mozilla.fenix.compose.button.RadioButton
 import org.mozilla.fenix.compose.list.ExpandableListHeader
+import org.mozilla.fenix.downloads.DownloadsScreenTestTag
 import org.mozilla.fenix.downloads.listscreen.store.DownloadListItem
 import org.mozilla.fenix.downloads.listscreen.store.DownloadUIAction
 import org.mozilla.fenix.downloads.listscreen.store.DownloadUIState
@@ -103,31 +113,44 @@ fun DownloadsScreen(
             downloadsStore.dispatch(DownloadUIAction.SearchBarDismissRequest)
         }
     }
+    val snackbarState = uiState.deletionSnackbarState
 
-    if (uiState.isDeleteDialogVisible) {
+    if (snackbarState is DownloadUIState.SnackbarState.UndoDeletion) {
+        val items = snackbarState.items
+
+        LaunchedEffect(items) {
+            showDeleteSnackbar(
+                selectedItems = items,
+                coroutineScope = coroutineScope,
+                snackbarHostState = snackbarHostState,
+                context = context,
+                undoAction = {
+                    downloadsStore.dispatch(DownloadUIAction.UndoPendingDeletion)
+                },
+            )
+        }
+    }
+
+    val dialogState = uiState.dialogState
+
+    if (dialogState is DownloadUIState.DialogState.DeleteConfirmation) {
+        val items = dialogState.items
+        DeleteConfirmationDialog(
+            itemCount = items.size,
+            onConfirm = { removeFromDevice ->
+                downloadsStore.dispatch(DownloadUIAction.AddPendingDeletionSet(items, removeFromDevice))
+            },
+            onDismiss = {
+                downloadsStore.dispatch(DownloadUIAction.DismissDeleteDialog)
+            },
+        )
+    } else if (dialogState is DownloadUIState.DialogState.MultiSelectDeleteConfirmation) {
         DeleteDownloadFileDialog(
             onConfirmDelete = {
-                downloadsStore.dispatch(DownloadUIAction.UpdateDeleteDialogVisibility(false))
-                downloadsStore.dispatch(
-                    DownloadUIAction.AddPendingDeletionSet(
-                        downloadsStore.state.mode.selectedItems.map { it.id }.toSet(),
-                    ),
-                )
-                showDeleteSnackbar(
-                    selectedItems = (downloadsStore.state.mode.selectedItems.toSet()),
-                    coroutineScope = coroutineScope,
-                    snackbarHostState = snackbarHostState,
-                    context = context,
-                    undoAction = {
-                        downloadsStore.dispatch(
-                            DownloadUIAction.UndoPendingDeletion,
-                        )
-                    },
-                )
-                downloadsStore.dispatch(DownloadUIAction.ExitEditMode)
+                downloadsStore.dispatch(DownloadUIAction.ConfirmMultiSelectDelete(dialogState.items))
             },
             onCancel = {
-                downloadsStore.dispatch(DownloadUIAction.UpdateDeleteDialogVisibility(false))
+                downloadsStore.dispatch(DownloadUIAction.DismissDeleteDialog)
             },
         )
     }
@@ -185,22 +208,11 @@ fun DownloadsScreen(
                         ToolbarEditActions(
                             downloadsStore = downloadsStore,
                             toolbarConfig = toolbarConfig,
-                            onItemDeleteClick = { item ->
+                            onItemDeleteClick = {
                                 downloadsStore.dispatch(
-                                    DownloadUIAction.AddPendingDeletionSet(
-                                        setOf(item.id),
+                                    DownloadUIAction.RequestDelete(
+                                        uiState.mode.selectedItems,
                                     ),
-                                )
-                                showDeleteSnackbar(
-                                    selectedItems = setOf(item),
-                                    coroutineScope = coroutineScope,
-                                    snackbarHostState = snackbarHostState,
-                                    context = context,
-                                    undoAction = {
-                                        downloadsStore.dispatch(
-                                            DownloadUIAction.UndoPendingDeletion,
-                                        )
-                                    },
                                 )
                             },
                         )
@@ -259,22 +271,7 @@ fun DownloadsScreen(
             },
             onDeleteClick = { item ->
                 if (item.status is FileItem.Status.Completed) {
-                    downloadsStore.dispatch(
-                        DownloadUIAction.AddPendingDeletionSet(
-                            setOf(item.id),
-                        ),
-                    )
-                    showDeleteSnackbar(
-                        selectedItems = setOf(item),
-                        coroutineScope = coroutineScope,
-                        snackbarHostState = snackbarHostState,
-                        context = context,
-                        undoAction = {
-                            downloadsStore.dispatch(
-                                DownloadUIAction.UndoPendingDeletion,
-                            )
-                        },
-                    )
+                    downloadsStore.dispatch(DownloadUIAction.RequestDelete(setOf(item)))
                 } else {
                     downloadsStore.dispatch(DownloadUIAction.CancelDownload(downloadId = item.id))
                 }
@@ -283,8 +280,9 @@ fun DownloadsScreen(
             onShareFileClick = {
                 downloadsStore.dispatch(
                     DownloadUIAction.ShareFileClicked(
-                        it.filePath,
-                        it.contentType,
+                        directoryPath = it.directoryPath,
+                        fileName = it.fileName,
+                        contentType = it.contentType,
                     ),
                 )
             },
@@ -312,7 +310,7 @@ fun DownloadsScreen(
 private fun ToolbarEditActions(
     downloadsStore: DownloadUIStore,
     toolbarConfig: ToolbarConfig,
-    onItemDeleteClick: (FileItem) -> Unit,
+    onItemDeleteClick: () -> Unit,
 ) {
     // IconButton and DropdownMenu in a common parent so the menu position is calculated correctly.
     Row {
@@ -339,18 +337,7 @@ private fun ToolbarEditActions(
                 MenuItem.TextItem(
                     text = Text.Resource(R.string.download_delete_item),
                     level = MenuItem.FixedItem.Level.Critical,
-                    onClick = {
-                        when (downloadsStore.state.mode.selectedItems.size) {
-                            1 -> {
-                                onItemDeleteClick(downloadsStore.state.mode.selectedItems.first())
-                                downloadsStore.dispatch(DownloadUIAction.ExitEditMode)
-                            }
-
-                            else -> downloadsStore.dispatch(
-                                DownloadUIAction.UpdateDeleteDialogVisibility(true),
-                            )
-                        }
-                    },
+                    onClick = onItemDeleteClick,
                 ),
             ),
             onDismissRequest = { showMenu = false },
@@ -626,6 +613,94 @@ private fun getToolbarConfig(mode: Mode): ToolbarConfig {
     }
 }
 
+@Composable
+private fun DeleteConfirmationDialog(
+    itemCount: Int,
+    onConfirm: (removeFromDevice: Boolean) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var deleteFromDevice by remember { mutableStateOf(true) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = {
+            Icon(
+                painter = painterResource(iconsR.drawable.mozac_ic_delete_24),
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        },
+        title = {
+            Text(
+                text = pluralStringResource(R.plurals.downloads_delete_dialog_title, itemCount, itemCount),
+                modifier = Modifier.fillMaxWidth(),
+                textAlign = TextAlign.Center,
+            )
+        },
+        text = {
+            Column {
+                DeleteOptionRow(
+                    selected = deleteFromDevice,
+                    onClick = { deleteFromDevice = true },
+                    title = stringResource(R.string.download_delete_dialog_from_device),
+                )
+
+                DeleteOptionRow(
+                    selected = !deleteFromDevice,
+                    onClick = { deleteFromDevice = false },
+                    title = stringResource(R.string.download_delete_dialog_from_history),
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                text = stringResource(R.string.download_delete_dialog_confirm),
+                onClick = { onConfirm(deleteFromDevice) },
+                modifier = Modifier.testTag(DownloadsScreenTestTag.DELETE_DIALOG_CONFIRM_BUTTON),
+            )
+        },
+        dismissButton = {
+            TextButton(
+                text = stringResource(R.string.download_delete_dialog_cancel),
+                onClick = onDismiss,
+                modifier = Modifier.testTag(DownloadsScreenTestTag.DELETE_DIALOG_CANCEL_BUTTON),
+            )
+        },
+    )
+}
+
+@Composable
+private fun DeleteOptionRow(
+    selected: Boolean,
+    onClick: () -> Unit,
+    title: String,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = selected,
+                onClick = onClick,
+                role = Role.RadioButton,
+            )
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        RadioButton(
+            selected = selected,
+            onClick = onClick,
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        Column {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+        }
+    }
+}
+
 private fun showDeleteSnackbar(
     selectedItems: Set<FileItem>,
     coroutineScope: CoroutineScope,
@@ -664,6 +739,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 1",
                         url = "https://example.com/file1",
                         description = "1.2 MB • example.com",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/pdf",
                         status = FileItem.Status.Completed,
@@ -675,6 +751,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 2",
                         url = "https://example.com/file2",
                         description = "2.3 MB • example.com",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "image/png",
                         status = FileItem.Status.Completed,
@@ -686,6 +763,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 3",
                         url = "https://example.com/file3",
                         description = "3.4 MB • example.com",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Completed,
@@ -697,6 +775,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 4",
                         url = "https://example.com/file4",
                         description = "5 MB / 10 MB • in 5s",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Downloading(progress = 0.5f),
@@ -708,6 +787,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 5",
                         url = "https://example.com/file5",
                         description = "5 MB / 10 MB • pending",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Downloading(progress = 0.5f),
@@ -719,6 +799,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 6",
                         url = "https://example.com/file6",
                         description = "5 MB / 10 MB • paused",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Paused(progress = 0.5f),
@@ -730,6 +811,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 7",
                         url = "https://example.com/file7",
                         description = "Preparing download…",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Initiated,
@@ -741,6 +823,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File 8",
                         url = "https://example.com/file8",
                         description = "Download Failed",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Failed,
@@ -759,6 +842,7 @@ private class DownloadsScreenPreviewModelParameterProvider :
                         fileName = "File $index",
                         url = "https://example.com/file$index",
                         description = "1.2 MB • example.com",
+                        directoryPath = "/storage/emulated/0/Download",
                         displayedShortUrl = "example.com",
                         contentType = "application/zip",
                         status = FileItem.Status.Completed,

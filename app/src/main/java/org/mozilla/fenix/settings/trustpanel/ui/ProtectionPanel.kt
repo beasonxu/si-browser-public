@@ -53,11 +53,14 @@ import mozilla.components.compose.base.text.value
 import mozilla.components.compose.base.theme.surfaceDimVariant
 import mozilla.components.support.utils.CertificateUtils
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.menu.compose.IPProtectionMenuItem
 import org.mozilla.fenix.components.menu.compose.MenuBadgeItem
 import org.mozilla.fenix.components.menu.compose.MenuGroup
 import org.mozilla.fenix.components.menu.compose.MenuItem
 import org.mozilla.fenix.components.menu.compose.MenuItemState
 import org.mozilla.fenix.components.menu.compose.MenuScaffold
+import org.mozilla.fenix.components.menu.compose.MenuTextItem
+import org.mozilla.fenix.components.menu.store.IPProtectionMenuState
 import org.mozilla.fenix.compose.LinkText
 import org.mozilla.fenix.compose.LinkTextState
 import org.mozilla.fenix.settings.PhoneFeature
@@ -80,10 +83,12 @@ private const val DROPDOWN_TEXT_WIDTH_FRACTION = 0.5f
 @Composable
 internal fun ProtectionPanel(
     websiteInfoState: WebsiteInfoState,
+    ipProtectionMenuState: IPProtectionMenuState,
     icon: Bitmap?,
     isTrackingProtectionEnabled: Boolean,
     isGlobalTrackingProtectionEnabled: Boolean,
     isLocalPdf: Boolean,
+    showIPProtection: Boolean,
     numberOfTrackersBlocked: Int,
     websitePermissions: List<WebsitePermission>,
     onTrackerBlockedMenuClick: () -> Unit,
@@ -93,6 +98,9 @@ internal fun ProtectionPanel(
     onAutoplayValueClick: (AutoplayValue) -> Unit,
     onToggleablePermissionClick: (WebsitePermission.Toggleable) -> Unit,
     onViewCertificateClick: () -> Unit,
+    onViewQWACClick: () -> Unit,
+    onIPProtectionToggle: () -> Unit,
+    onIPProtectionNavigate: () -> Unit,
 ) {
     val isSiteProtectionEnabled = isTrackingProtectionEnabled && isGlobalTrackingProtectionEnabled
     MenuScaffold(
@@ -153,6 +161,13 @@ internal fun ProtectionPanel(
             }
         }
 
+        IPProtectionMenuGroup(
+            visible = showIPProtection,
+            ipProtectionMenuState = ipProtectionMenuState,
+            onIPProtectionToggle = onIPProtectionToggle,
+            onIPProtectionNavigate = onIPProtectionNavigate,
+        )
+
         MenuGroup {
             if (isLocalPdf) {
                 MenuItem(
@@ -169,6 +184,16 @@ internal fun ProtectionPanel(
                     ),
                     onClick = onViewCertificateClick,
                 )
+                websiteInfoState.qwac?.let {
+                    MenuTextItem(
+                        label = stringResource(
+                            id = R.string.connection_security_panel_issued_to,
+                            CertificateUtils.subjectOrganization(it) ?: "",
+                        ),
+                        description = stringResource(id = R.string.connection_security_panel_qualified_certificate),
+                        onClick = onViewQWACClick,
+                    )
+                }
             } else {
                 MenuItem(
                     label = stringResource(id = R.string.connection_security_panel_not_secure),
@@ -208,6 +233,24 @@ internal fun ProtectionPanel(
             linkTextColor = MaterialTheme.colorScheme.tertiary,
             linkTextDecoration = TextDecoration.Underline,
         )
+    }
+}
+
+@Composable
+private fun IPProtectionMenuGroup(
+    visible: Boolean,
+    ipProtectionMenuState: IPProtectionMenuState,
+    onIPProtectionToggle: () -> Unit,
+    onIPProtectionNavigate: () -> Unit,
+) {
+    if (visible) {
+        MenuGroup {
+            IPProtectionMenuItem(
+                state = ipProtectionMenuState,
+                onToggle = onIPProtectionToggle,
+                onNavigate = onIPProtectionNavigate,
+            )
+        }
     }
 }
 
@@ -448,10 +491,12 @@ private fun ProtectionPanelPreview() {
                     websiteTitle = "Mozilla",
                     certificate = null,
                 ),
+                ipProtectionMenuState = IPProtectionMenuState(),
                 icon = null,
                 isTrackingProtectionEnabled = true,
                 isGlobalTrackingProtectionEnabled = true,
                 isLocalPdf = false,
+                showIPProtection = true,
                 numberOfTrackersBlocked = 5,
                 websitePermissions = listOf(
                     WebsitePermission.Autoplay(
@@ -467,6 +512,9 @@ private fun ProtectionPanelPreview() {
                 onAutoplayValueClick = {},
                 onToggleablePermissionClick = {},
                 onViewCertificateClick = {},
+                onViewQWACClick = {},
+                onIPProtectionToggle = {},
+                onIPProtectionNavigate = {},
             )
         }
     }

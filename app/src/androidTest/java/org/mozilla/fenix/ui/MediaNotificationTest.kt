@@ -8,15 +8,17 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import mozilla.components.concept.engine.mediasession.MediaSession
 import org.junit.Rule
 import org.junit.Test
+import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.customannotations.SmokeTest
+import org.mozilla.fenix.helpers.FenixTestRule
 import org.mozilla.fenix.helpers.HomeActivityTestRule
 import org.mozilla.fenix.helpers.MatcherHelper
 import org.mozilla.fenix.helpers.RetryTestRule
+import org.mozilla.fenix.helpers.RetryableComposeTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper.audioPageAsset
 import org.mozilla.fenix.helpers.TestAssetHelper.videoPageAsset
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
-import org.mozilla.fenix.helpers.TestSetup
 import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.clickPageObject
@@ -30,19 +32,27 @@ import org.mozilla.fenix.ui.robots.notificationShade
  *  - a media notification icon is displayed on the homescreen for the tab playing media content
  *  Note: this test only verifies media notifications, not media itself
  */
-class MediaNotificationTest : TestSetup() {
+class MediaNotificationTest {
+
     @get:Rule(order = 0)
-    val composeTestRule =
+    @JvmField
+    val retryTestRule = RetryTestRule(3)
+
+    @get:Rule(order = 1)
+    val fenixTestRule: FenixTestRule = FenixTestRule()
+
+    @get:Rule(order = 2)
+    val retryableComposeTestRule = RetryableComposeTestRule<HomeActivity, HomeActivityTestRule> {
         AndroidComposeTestRule(
             HomeActivityTestRule.withDefaultSettingsOverrides(),
         ) { it.activity }
+    }
 
-    @get:Rule(order = 1)
+    @get:Rule(order = 3)
     val memoryLeaksRule = DetectMemoryLeaksRule()
 
-    @Rule(order = 2)
-    @JvmField
-    val retryTestRule = RetryTestRule(3)
+    private val mockWebServer get() = fenixTestRule.mockWebServer
+    private val browserStore get() = fenixTestRule.browserStore
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1347033
     @SmokeTest
@@ -50,10 +60,10 @@ class MediaNotificationTest : TestSetup() {
     fun verifyVideoPlaybackSystemNotificationTest() {
         val videoTestPage = mockWebServer.videoPageAsset
 
-        navigationToolbar(composeTestRule) {
+        navigationToolbar(retryableComposeTestRule.current) {
         }.enterURLAndEnterToBrowser(videoTestPage.url) {
             mDevice.waitForIdle()
-            clickPageObject(composeTestRule, MatcherHelper.itemWithText("Play"))
+            clickPageObject(retryableComposeTestRule.current, MatcherHelper.itemWithText("Play"))
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PLAYING)
         }.openNotificationShade {
             verifySystemNotificationExists(videoTestPage.title)
@@ -63,9 +73,9 @@ class MediaNotificationTest : TestSetup() {
 
         mDevice.pressBack()
 
-        browserScreen(composeTestRule) {
+        browserScreen(retryableComposeTestRule.current) {
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PAUSED)
-        }.openTabDrawer(composeTestRule) {
+        }.openTabDrawer(retryableComposeTestRule.current) {
             closeTab()
         }
 
@@ -85,10 +95,9 @@ class MediaNotificationTest : TestSetup() {
     fun verifyAudioPlaybackSystemNotificationTest() {
         val audioTestPage = mockWebServer.audioPageAsset
 
-        navigationToolbar(composeTestRule) {
+        navigationToolbar(retryableComposeTestRule.current) {
         }.enterURLAndEnterToBrowser(audioTestPage.url) {
-            mDevice.waitForIdle()
-            clickPageObject(composeTestRule, MatcherHelper.itemWithText("Play"))
+            clickPageObject(retryableComposeTestRule.current, MatcherHelper.itemWithText("Play"))
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PLAYING)
         }.openNotificationShade {
             verifySystemNotificationExists(audioTestPage.title)
@@ -98,9 +107,9 @@ class MediaNotificationTest : TestSetup() {
 
         mDevice.pressBack()
 
-        browserScreen(composeTestRule) {
+        browserScreen(retryableComposeTestRule.current) {
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PAUSED)
-        }.openTabDrawer(composeTestRule) {
+        }.openTabDrawer(retryableComposeTestRule.current) {
             closeTab()
         }
 
@@ -119,13 +128,13 @@ class MediaNotificationTest : TestSetup() {
     fun mediaSystemNotificationInPrivateModeTest() {
         val audioTestPage = mockWebServer.audioPageAsset
 
-        homeScreen(composeTestRule) {
+        homeScreen(retryableComposeTestRule.current) {
         }.openTabDrawer {
         }.toggleToPrivateTabs {
         }.openNewTab {
         }.submitQuery(audioTestPage.url.toString()) {
             mDevice.waitForIdle()
-            clickPageObject(composeTestRule, MatcherHelper.itemWithText("Play"))
+            clickPageObject(retryableComposeTestRule.current, MatcherHelper.itemWithText("Play"))
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PLAYING)
         }.openNotificationShade {
             verifySystemNotificationExists("A site is playing media")
@@ -135,9 +144,9 @@ class MediaNotificationTest : TestSetup() {
 
         mDevice.pressBack()
 
-        browserScreen(composeTestRule) {
+        browserScreen(retryableComposeTestRule.current) {
             assertPlaybackState(browserStore, MediaSession.PlaybackState.PAUSED)
-        }.openTabDrawer(composeTestRule) {
+        }.openTabDrawer(retryableComposeTestRule.current) {
             closeTab()
             verifySnackBarText("Private tab closed")
         }
@@ -150,7 +159,7 @@ class MediaNotificationTest : TestSetup() {
 
         // close notification shade before and go back to regular mode before the next test
         mDevice.pressBack()
-        homeScreen(composeTestRule) {
+        homeScreen(retryableComposeTestRule.current) {
         }.togglePrivateBrowsingMode()
     }
 }

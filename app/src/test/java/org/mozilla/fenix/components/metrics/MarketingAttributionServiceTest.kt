@@ -10,6 +10,7 @@ import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.utils.ext.packageManagerWrapper
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.components.fake.FakeMetricController
@@ -17,6 +18,9 @@ import org.mozilla.fenix.distributions.DistributionBrowserStoreProvider
 import org.mozilla.fenix.distributions.DistributionIdManager
 import org.mozilla.fenix.distributions.DistributionProviderChecker
 import org.mozilla.fenix.distributions.DistributionSettings
+import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.nimbus.FxNimbus
+import org.mozilla.fenix.nimbus.MarketingOnboardingCard
 
 @RunWith(AndroidJUnit4::class)
 internal class MarketingAttributionServiceTest {
@@ -55,6 +59,26 @@ internal class MarketingAttributionServiceTest {
         metricController = FakeMetricController(),
         appPreinstalledOnVivoDevice = { true },
     )
+
+    @Before
+    fun setUp() {
+        MarketingAttributionService.response = null
+        testContext.settings().shouldShowMarketingOnboarding = true
+        FxNimbus.features.marketingOnboardingCard.withCachedValue(MarketingOnboardingCard(enabled = true))
+    }
+
+    @Test
+    fun `WHEN the marketing onboarding Nimbus flag is disabled THEN we should not show marketing onboarding`() =
+        runBlocking {
+            FxNimbus.features.marketingOnboardingCard.withCachedValue(MarketingOnboardingCard(enabled = false))
+            assertFalse(MarketingAttributionService.shouldShowMarketingOnboarding("gclid=12345", distributionIdManager))
+        }
+
+    @Test
+    fun `WHEN the marketing onboarding Nimbus flag is enabled THEN we should show marketing onboarding`() =
+        runBlocking {
+            assertTrue(MarketingAttributionService.shouldShowMarketingOnboarding("gclid=12345", distributionIdManager))
+        }
 
     @Test
     fun `WHEN installReferrerResponse is empty or null THEN we should not show marketing onboarding`() =
@@ -102,12 +126,43 @@ internal class MarketingAttributionServiceTest {
 
             distributionIdManager.setDistribution(DistributionIdManager.Distribution.XIAOMI_001)
             assertFalse(MarketingAttributionService.shouldShowMarketingOnboarding(null, distributionIdManager))
+
+            distributionIdManager.setDistribution(DistributionIdManager.Distribution.AURA_001)
+            assertFalse(MarketingAttributionService.shouldShowMarketingOnboarding(null, distributionIdManager))
         }
 
     @Test
-    fun `GIVEN a partnership distribution WHEN we should not skip the marketing screen THEN we do not skip it`() =
-        runBlocking {
-            distributionIdManager.setDistribution(DistributionIdManager.Distribution.AURA_001)
-            assertTrue(MarketingAttributionService.shouldShowMarketingOnboarding(null, distributionIdManager))
-        }
+    fun `WHEN installReferrerResponse is null or blank or malformed THEN isMetaAttribution returns false`() {
+        assertFalse(MarketingAttributionService.isMetaAttribution(null))
+        assertFalse(MarketingAttributionService.isMetaAttribution(""))
+        assertFalse(MarketingAttributionService.isMetaAttribution(" "))
+
+        val malformedReferrer = """utm_content={"app":12345,"t":1234567890,"source":{"data":"DATA","nonce":"NONCE"}"""
+        assertFalse(MarketingAttributionService.isMetaAttribution(malformedReferrer))
+    }
+
+    @Test
+    fun `WHEN installReferrerResponse contains Meta utm_content params THEN isMetaAttribution returns true`() = runBlocking {
+        val metaReferrer = """utm_content={"app":12345,"t":1234567890,"source":{"data":"DATA","nonce":"NONCE"}}"""
+        assertTrue(MarketingAttributionService.isMetaAttribution(metaReferrer))
+        assertTrue(MarketingAttributionService.shouldShowMarketingOnboarding(metaReferrer, distributionIdManager))
+    }
+
+    @Test
+    fun `WHEN installReferrerResponse missing Meta data or nonce THEN isMetaAttribution returns false`() = runBlocking {
+        var metaReferrer = """utm_content={"app":12345,"t":1234567890,"source":{"nonce":"NONCE"}}"""
+        assertFalse(MarketingAttributionService.isMetaAttribution(metaReferrer))
+        assertFalse(MarketingAttributionService.shouldShowMarketingOnboarding(metaReferrer, distributionIdManager))
+
+        metaReferrer = """utm_content={"app":12345,"t":1234567890,"source":{"data":"DATA"}}"""
+        assertFalse(MarketingAttributionService.isMetaAttribution(metaReferrer))
+        assertFalse(MarketingAttributionService.shouldShowMarketingOnboarding(metaReferrer, distributionIdManager))
+    }
+
+    @Test
+    fun `WHEN installReferrerResponse does not contain Meta params THEN isMetaAttribution returns false`() {
+        assertFalse(MarketingAttributionService.isMetaAttribution("utm_source=google&utm_medium=cpc"))
+        assertFalse(MarketingAttributionService.isMetaAttribution("gclid=12345"))
+        assertFalse(MarketingAttributionService.isMetaAttribution("adjust_reftag=test"))
+    }
 }

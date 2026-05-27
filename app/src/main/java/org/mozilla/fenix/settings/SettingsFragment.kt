@@ -25,7 +25,7 @@ import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
-import androidx.preference.SwitchPreference
+import androidx.preference.SwitchPreferenceCompat
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
@@ -55,10 +55,12 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.databinding.AmoCollectionOverrideDialogBinding
+import org.mozilla.fenix.e2e.SystemInsetsPaddedFragment
 import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.navigateToNotificationsSettings
+import org.mozilla.fenix.ext.openInNewTab
 import org.mozilla.fenix.ext.openSetDefaultBrowserOption
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
@@ -72,10 +74,14 @@ import org.mozilla.fenix.snackbar.FenixSnackbarDelegate
 import org.mozilla.fenix.snackbar.SnackbarBinding
 import org.mozilla.fenix.utils.Settings
 import kotlin.system.exitProcess
+import mozilla.components.ui.icons.R as iconsR
 import org.mozilla.fenix.GleanMetrics.Settings as SettingsMetrics
 
+/**
+ * Main settings screen.
+ */
 @Suppress("LargeClass", "TooManyFunctions")
-class SettingsFragment : PreferenceFragmentCompat() {
+class SettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFragment {
 
     private val args by navArgs<SettingsFragmentArgs>()
     private lateinit var accountUiView: AccountUiView
@@ -147,7 +153,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 getString(R.string.pref_key_search_bookmarks),
                 getString(R.string.pref_key_search_browsing_history),
                 getString(R.string.pref_key_show_clipboard_suggestions),
-                getString(R.string.pref_key_show_search_engine_shortcuts),
                 getString(R.string.pref_key_open_links_in_a_private_tab),
                 getString(R.string.pref_key_sync_logins),
                 getString(R.string.pref_key_sync_bookmarks),
@@ -175,6 +180,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
             getPreferenceKey(R.string.pref_key_translation),
         )?.isVisible = FxNimbus.features.translations.value().globalSettingsEnabled &&
             components.core.store.state.translationEngine.isEngineSupported == true
+
+        findPreference<Preference>(
+            getPreferenceKey(R.string.pref_key_page_summaries),
+        )?.isVisible = components.settings.shakeToSummarizeFeatureFlagEnabled
+
+        findPreference<Preference>(
+            getPreferenceKey(R.string.pref_key_ai_controls),
+        )?.isVisible = requireContext().settings().aiControlsFeatureFlagEnabled
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
@@ -226,7 +239,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             showToolbarWithIconButton(
                 title = toolbarTitle,
                 contentDescription = getString(R.string.settings_search_button_content_description),
-                iconResId = R.drawable.ic_search,
+                iconResId = iconsR.drawable.mozac_ic_search_24,
                 onClick = {
                     SettingsSearch.opened.record()
                     findNavController().navigate(R.id.action_settingsFragment_to_settingsSearchFragment)
@@ -247,7 +260,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
             ?.hideInitialScrollBar(viewLifecycleOwner.lifecycleScope)
 
         args.preferenceToScrollTo?.let {
-            scrollToPreference(it)
+            scrollToPreferenceWithHighlight(it)
         }
         // Consider finish of `onResume` to be the point at which we consider this fragment as 'created'.
         creatingFragment = false
@@ -387,6 +400,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 SettingsFragmentDirections.actionSettingsFragmentToTranslationsSettingsFragment()
             }
 
+            resources.getString(R.string.pref_key_page_summaries) -> {
+                SettingsFragmentDirections.actionSettingsFragmentToPageSummariesSettingsFragment()
+            }
+
+            resources.getString(R.string.pref_key_ai_controls) -> {
+                SettingsFragmentDirections.actionSettingsFragmentToAiControlsFragment()
+            }
+
             // Privacy and security preferences
             resources.getString(R.string.pref_key_private_browsing) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToPrivateBrowsingFragment()
@@ -394,6 +415,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
             resources.getString(R.string.pref_key_https_only_settings) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToHttpsOnlyFragment()
+            }
+
+            resources.getString(R.string.pref_key_ip_protection_settings) -> {
+                SettingsFragmentDirections.actionSettingsFragmentToIpProtectionFragment()
             }
 
             resources.getString(R.string.pref_key_tracking_protection_settings) -> {
@@ -507,7 +532,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
             // About preferences
             resources.getString(R.string.pref_key_rate) -> {
-                components.playStoreReviewPromptController.tryLaunchPlayStoreReview(requireActivity())
+                components.playStoreReviewPromptController.tryLaunchPlayStoreReview(requireActivity(), ::openInNewTab)
                 null
             }
 
@@ -605,6 +630,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         )
         setupGeckoLogsPreference(settings)
         setupHttpsOnlyPreferences(settings)
+        setupIPProtectionPreferences(settings)
         setupNotificationPreference(
             NotificationManagerCompat.from(requireContext()).areNotificationsEnabled(),
         )
@@ -767,7 +793,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     internal fun setupCookieBannerPreference(settings: Settings) {
         FxNimbus.features.cookieBanners.recordExposure()
         if (settings.shouldShowCookieBannerUI) {
-            with(requirePreference<SwitchPreference>(R.string.pref_key_cookie_banner_private_mode)) {
+            with(requirePreference<SwitchPreferenceCompat>(R.string.pref_key_cookie_banner_private_mode)) {
                 isVisible = settings.shouldShowCookieBannerUI
 
                 onPreferenceChangeListener = object : SharedPreferenceUpdater() {
@@ -819,6 +845,15 @@ class SettingsFragment : PreferenceFragmentCompat() {
                     getString(R.string.preferences_https_only_on_private)
                 else -> null
             }
+    }
+
+    private fun setupIPProtectionPreferences(settings: Settings) {
+        findPreference<IPProtectionPreference>(
+            getPreferenceKey(R.string.pref_key_ip_protection_settings),
+        )?.apply {
+            isVisible = settings.isIPProtectionAvailable
+            showBetaBadge = FxNimbus.features.ipProtection.value().showBetaBadge
+        }
     }
 
     private fun updateProfilerUI(profilerStatus: Boolean) {

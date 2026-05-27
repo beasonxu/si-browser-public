@@ -1,6 +1,7 @@
 projects:
   app:
     upstream_dependencies:
+    - app:longfox
     - components:browser-domains
     - components:browser-engine-gecko
     - components:browser-errorpages
@@ -18,6 +19,7 @@ projects:
     - components:compose-browser-toolbar
     - components:compose-cfr
     - components:concept-accelerometer
+    - components:concept-ai-controls
     - components:concept-awesomebar
     - components:concept-base
     - components:concept-engine
@@ -46,6 +48,7 @@ projects:
     - components:feature-media
     - components:feature-privatemode
     - components:feature-prompts
+    - components:feature-protection-dashboard
     - components:feature-push
     - components:feature-pwa
     - components:feature-qr
@@ -66,6 +69,7 @@ projects:
     - components:feature-webcompat-reporter
     - components:feature-webnotifications
     - components:lib-accelerometer-sensormanager
+    - components:lib-ai-controls
     - components:lib-crash
     - components:lib-crash-sentry
     - components:lib-dataprotect
@@ -81,14 +85,17 @@ projects:
     - components:service-glean
     - components:service-location
     - components:service-mars
+    - components:service-merino-manifest
     - components:service-nimbus
     - components:service-pocket
     - components:service-sync-autofill
     - components:service-sync-logins
+    - components:support-android-test
     - components:support-appservices
     - components:support-base
     - components:support-images
     - components:support-ktx
+    - components:support-license
     - components:support-locale
     - components:support-remotesettings
     - components:support-test
@@ -100,6 +107,7 @@ projects:
     - components:ui-autocomplete
     - components:ui-colors
     - components:ui-icons
+    - components:ui-richtext
     - components:ui-tabcounter
     - components:ui-widgets
 variants:

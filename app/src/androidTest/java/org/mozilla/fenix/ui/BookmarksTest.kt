@@ -11,6 +11,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SkipLeaks
 import org.mozilla.fenix.customannotations.SmokeTest
+import org.mozilla.fenix.helpers.FenixTestRule
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MockBrowserDataHelper.createBookmarkItem
 import org.mozilla.fenix.helpers.MockBrowserDataHelper.generateBookmarkFolder
@@ -21,7 +22,6 @@ import org.mozilla.fenix.helpers.TestHelper.clickSnackbarButton
 import org.mozilla.fenix.helpers.TestHelper.exitMenu
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestHelper.waitForAppWindowToBeUpdated
-import org.mozilla.fenix.helpers.TestSetup
 import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.composeBookmarksMenu
@@ -29,12 +29,17 @@ import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.multipleSelectionToolbar
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
-class BookmarksTest : TestSetup() {
+class BookmarksTest {
     private val testBookmark = object {
         var title: String = "Bookmark title"
         var url: String = "https://www.example.com/"
     }
     private val bookmarkFolderName = "My Folder"
+
+    @get:Rule(order = 0)
+    val fenixTestRule: FenixTestRule = FenixTestRule()
+
+    private val mockWebServer get() = fenixTestRule.mockWebServer
 
     @get:Rule
     val memoryLeaksRule = DetectMemoryLeaksRule()
@@ -246,7 +251,6 @@ class BookmarksTest : TestSetup() {
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2833710
-    @Ignore("Disabled after enabling the composable toolbar and main menu: https://bugzilla.mozilla.org/show_bug.cgi?id=2006295")
     @Test
     fun verifySearchBookmarksViewTest() {
         val defaultWebPage = mockWebServer.getGenericAsset(1)
@@ -261,8 +265,8 @@ class BookmarksTest : TestSetup() {
             verifySearchSelectorButton()
             verifySearchEngineIcon("Bookmarks")
             verifySearchBarPlaceholder("Search bookmarks")
-            verifySearchBarPosition(true)
-            tapOutsideToDismissSearchBar()
+            verifySearchBarPosition()
+            tapOutsideToDismissSearchBar(defaultWebPage.url.toString())
             verifySearchToolbar(false)
         }
         composeBookmarksMenu(composeTestRule) {
@@ -281,7 +285,7 @@ class BookmarksTest : TestSetup() {
         }.clickSearchButton {
             verifySearchToolbar(true)
             verifySearchEngineIcon("Bookmarks")
-            verifySearchBarPosition(false)
+            verifySearchBarPosition()
             pressBack()
             verifySearchToolbar(false)
         }
@@ -339,7 +343,7 @@ class BookmarksTest : TestSetup() {
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2833694
     @Test
-    fun copyBookmarkURLTest() {
+    fun moveBookmarkToDifferentFolderTest() {
         val defaultWebPage = mockWebServer.getGenericAsset(1)
 
         createBookmarkItem(defaultWebPage.url.toString(), defaultWebPage.title, null)
@@ -347,13 +351,18 @@ class BookmarksTest : TestSetup() {
         homeScreen(composeTestRule) {
         }.openThreeDotMenu {
         }.clickBookmarksButton {
+            createFolder(bookmarkFolderName)
+            verifyFolderTitle(bookmarkFolderName)
+            verifyBookmarkTitle(defaultWebPage.title)
         }.openThreeDotMenu(defaultWebPage.title) {
-        }.clickCopy {
-            waitForBookmarksSnackBarToBeGone(snackbarText = "URL copied")
-        }.goBackToBrowserScreen {
-        }.openNavigationToolbar {
-        }.visitLinkFromClipboard {
-            verifyUrl(defaultWebPage.url.toString())
+        }.clickMove {
+            expandSelectableFolder("Bookmarks")
+            selectFolder(bookmarkFolderName)
+            navigateUp()
+            verifyFolderTitle(bookmarkFolderName)
+            verifyBookmarkFolderDescription(numberOfBookmarksInFolder = "1")
+            selectFolder(bookmarkFolderName)
+            verifyBookmarkTitle(defaultWebPage.title)
         }
     }
 
@@ -408,11 +417,6 @@ class BookmarksTest : TestSetup() {
         }.openThreeDotMenu {
         }.clickBookmarksButton {
             verifyBookmarkTitle(defaultWebPage.title)
-        }.openThreeDotMenu(defaultWebPage.title) {
-        }.clickDelete {
-            clickSnackbarButton(composeTestRule, "UNDO")
-            waitForBookmarksSnackBarToBeGone("Deleted ${defaultWebPage.title}")
-            verifyBookmarkedURL(defaultWebPage.url.toString())
         }.openThreeDotMenu(defaultWebPage.title) {
         }.clickDelete {
             verifyBookmarkIsDeleted(defaultWebPage.title)

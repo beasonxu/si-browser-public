@@ -33,7 +33,8 @@ class AssistIntentProcessorTest {
         val intent = Intent().apply {
             action = TEST_WRONG_ACTION
         }
-        val result = StartSearchIntentProcessor().process(intent, navController, out, settings)
+        val result =
+            StartSearchIntentProcessor { true }.process(intent, navController, out, settings)
 
         verify { navController wasNot Called }
         verify { out wasNot Called }
@@ -55,7 +56,7 @@ class AssistIntentProcessorTest {
             navController.navigate(
                 NavGraphDirections.actionGlobalSearchDialog(
                     sessionId = null,
-                    searchAccessPoint = MetricsUtils.Source.NONE,
+                    searchAccessPoint = MetricsUtils.Source.DIGITAL_ASSISTANT,
                 ),
                 options,
             )
@@ -67,6 +68,8 @@ class AssistIntentProcessorTest {
     @Test
     fun `GIVEN an intent with ACTION_ASSIST action WHEN it is processed THEN navigate to the new search UX`() {
         every { settings.shouldUseComposableToolbar } returns true
+        every { settings.shouldShowVoiceSearch } returns true
+
         val intent = Intent().apply {
             action = Intent.ACTION_ASSIST
         }
@@ -79,7 +82,34 @@ class AssistIntentProcessorTest {
                     sessionToDelete = null,
                     sessionToStartSearchFor = null,
                     focusOnAddressBar = true,
-                    searchAccessPoint = MetricsUtils.Source.NONE,
+                    startVoiceSearch = true,
+                    searchAccessPoint = MetricsUtils.Source.DIGITAL_ASSISTANT,
+                ),
+                null,
+            )
+        }
+
+        verify { out wasNot Called }
+    }
+
+    @Test
+    fun `GIVEN an intent with ACTION_ASSIST action and voice search is disabled WHEN it is processed THEN startVoiceSearch should be false`() {
+        every { settings.shouldUseComposableToolbar } returns true
+        every { settings.shouldShowVoiceSearch } returns false
+        val intent = Intent().apply {
+            action = Intent.ACTION_ASSIST
+        }
+
+        AssistIntentProcessor().process(intent, navController, out, settings)
+
+        verify {
+            navController.navigate(
+                NavGraphDirections.actionGlobalHome(
+                    sessionToDelete = null,
+                    sessionToStartSearchFor = null,
+                    focusOnAddressBar = true,
+                    startVoiceSearch = false,
+                    searchAccessPoint = MetricsUtils.Source.DIGITAL_ASSISTANT,
                 ),
                 null,
             )

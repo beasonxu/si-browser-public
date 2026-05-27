@@ -6,17 +6,19 @@ package org.mozilla.fenix.ui
 
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.core.net.toUri
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.R
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.AppAndSystemHelper.registerAndCleanupIdlingResources
+import org.mozilla.fenix.helpers.FenixTestRule
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.RecyclerViewIdlingResource
 import org.mozilla.fenix.helpers.TestAssetHelper.enhancedTrackingProtectionAsset
+import org.mozilla.fenix.helpers.TestAssetHelper.getGenericAsset
 import org.mozilla.fenix.helpers.TestHelper
-import org.mozilla.fenix.helpers.TestSetup
 import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.addonsMenu
 import org.mozilla.fenix.ui.robots.homeScreen
@@ -26,7 +28,12 @@ import org.mozilla.fenix.ui.robots.navigationToolbar
  *  Tests for verifying the functionality of installing or removing addons
  *
  */
-class SettingsAddonsTest : TestSetup() {
+class SettingsAddonsTest {
+    @get:Rule(order = 0)
+    val fenixTestRule: FenixTestRule = FenixTestRule()
+
+    private val mockWebServer get() = fenixTestRule.mockWebServer
+
     @get:Rule
     val composeTestRule =
         AndroidComposeTestRule(
@@ -139,6 +146,7 @@ class SettingsAddonsTest : TestSetup() {
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/561594
+    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=2033498")
     @SmokeTest
     @Test
     fun verifyUBlockWorksInPrivateModeTest() {
@@ -154,27 +162,40 @@ class SettingsAddonsTest : TestSetup() {
         navigationToolbar(composeTestRule) {
         }.enterURLAndEnterToBrowser(webPage.toUri()) {
             verifyPageContent("Lets test!")
-        }.openThreeDotMenu {
-            verifyExtensionsButtonWithInstalledExtension(addonName)
         }
+        // Fix ComposeNotIdleException when verifying the extensions button when an extension is installed
+        // Bugzilla ticket: https://bugzilla.mozilla.org/show_bug.cgi?id=2033366
+        //     .openThreeDotMenu {
+        //     verifyExtensionsButtonWithInstalledExtension(addonName)
+        // }
     }
 
     // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/875785
+    @Ignore("Failing: https://bugzilla.mozilla.org/show_bug.cgi?id=2033498")
     @Test
     fun verifyUBlockWorksInNormalModeTest() {
+        val genericURL = mockWebServer.getGenericAsset(1)
         val addonName = "uBlock Origin"
         val webPage = "https://mozilla-mobile.github.io/testapp/"
 
         addonsMenu(composeTestRule) {
             installAddon(addonName, composeTestRule.activityRule)
             closeAddonInstallCompletePrompt()
+            verifyAddonIsInstalled(addonName)
         }.goBackToHomeScreen {
+        }
+        navigationToolbar(composeTestRule) {
+        }.enterURLAndEnterToBrowser(genericURL.url) {
+            verifyPageContent(genericURL.content)
         }
         navigationToolbar(composeTestRule) {
         }.enterURLAndEnterToBrowser(webPage.toUri()) {
             verifyPageContent("Lets test!")
-        }.openThreeDotMenu {
-            verifyExtensionsButtonWithInstalledExtension(addonName)
         }
+        // Fix ComposeNotIdleException when verifying the extensions button when an extension is installed
+        // Bugzilla ticket: https://bugzilla.mozilla.org/show_bug.cgi?id=2033366
+        //     .openThreeDotMenu {
+        //     verifyExtensionsButtonWithInstalledExtension(addonName)
+        // }
     }
 }

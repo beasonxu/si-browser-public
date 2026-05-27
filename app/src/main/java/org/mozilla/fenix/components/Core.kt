@@ -6,12 +6,12 @@ package org.mozilla.fenix.components
 
 import android.content.Context
 import android.content.res.Configuration
-import android.os.Environment
 import androidx.core.content.ContextCompat
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import mozilla.components.browser.domains.autocomplete.BaseDomainAutocompleteProvider
@@ -27,6 +27,7 @@ import mozilla.components.browser.session.storage.SessionStorage
 import mozilla.components.browser.state.engine.EngineMiddleware
 import mozilla.components.browser.state.engine.middleware.SessionPrioritizationMiddleware
 import mozilla.components.browser.state.engine.middleware.TranslationsMiddleware
+import mozilla.components.browser.state.selector.findTabOrCustomTab
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.browser.storage.sync.PlacesBookmarksStorage
@@ -54,6 +55,8 @@ import mozilla.components.feature.media.middleware.RecordingDevicesMiddleware
 import mozilla.components.feature.prompts.PromptMiddleware
 import mozilla.components.feature.prompts.file.FileUploadsDirCleaner
 import mozilla.components.feature.prompts.file.FileUploadsDirCleanerMiddleware
+import mozilla.components.feature.protection.dashboard.ProtectionsDashboardMiddleware
+import mozilla.components.feature.protection.dashboard.ProtectionsStorage
 import mozilla.components.feature.pwa.ManifestStorage
 import mozilla.components.feature.pwa.WebAppShortcutManager
 import mozilla.components.feature.readerview.ReaderViewMiddleware
@@ -74,6 +77,7 @@ import mozilla.components.feature.session.HistoryDelegate
 import mozilla.components.feature.session.middleware.LastAccessMiddleware
 import mozilla.components.feature.session.middleware.undo.UndoMiddleware
 import mozilla.components.feature.sitepermissions.OnDiskSitePermissionsStorage
+import mozilla.components.feature.summarize.settings.SummarizationSettings
 import mozilla.components.feature.top.sites.DefaultTopSitesStorage
 import mozilla.components.feature.top.sites.PinnedSiteStorage
 import mozilla.components.feature.webcompat.WebCompatFeature
@@ -92,6 +96,7 @@ import mozilla.components.service.mars.NEW_TAB_TILE_1_PLACEMENT_KEY
 import mozilla.components.service.mars.NEW_TAB_TILE_2_PLACEMENT_KEY
 import mozilla.components.service.mars.Placement
 import mozilla.components.service.mars.contile.ContileTopSitesUpdater
+import mozilla.components.service.merino.manifest.MerinoManifestProvider
 import mozilla.components.service.pocket.ContentRecommendationsRequestConfig
 import mozilla.components.service.pocket.PocketStoriesConfig
 import mozilla.components.service.pocket.PocketStoriesService
@@ -105,6 +110,7 @@ import mozilla.components.support.ktx.android.content.res.readJSONObject
 import mozilla.components.support.locale.LocaleManager
 import mozilla.components.support.utils.DateTimeProvider
 import mozilla.components.support.utils.DefaultDateTimeProvider
+import mozilla.components.support.utils.DefaultDownloadFileUtils
 import mozilla.components.support.utils.RunWhenReadyQueue
 import org.mozilla.fenix.AppRequestInterceptor
 import org.mozilla.fenix.BuildConfig
@@ -124,15 +130,26 @@ import org.mozilla.fenix.gecko.GeckoProvider
 import org.mozilla.fenix.historymetadata.DefaultHistoryMetadataService
 import org.mozilla.fenix.historymetadata.HistoryMetadataMiddleware
 import org.mozilla.fenix.historymetadata.HistoryMetadataService
+import org.mozilla.fenix.longfox.LongFoxFeature
 import org.mozilla.fenix.media.MediaSessionService
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.perf.StrictModeManager
 import org.mozilla.fenix.perf.lazyMonitored
 import org.mozilla.fenix.settings.advanced.getSelectedLocale
+import org.mozilla.fenix.settings.downloads.DownloadLocationManager
 import org.mozilla.fenix.share.DefaultSentFromFirefoxManager
 import org.mozilla.fenix.share.DefaultSentFromStorage
 import org.mozilla.fenix.share.SaveToPDFMiddleware
+import org.mozilla.fenix.summarization.FenixSummarizationSettingsBinding
+import org.mozilla.fenix.summarization.eligibility.DefaultSummarizationEligibilityChecker
+import org.mozilla.fenix.summarization.eligibility.SummarizationEligibilityChecker
+import org.mozilla.fenix.summarization.onboarding.FenixSummarizationFeatureConfiguration
+import org.mozilla.fenix.summarization.onboarding.SummarizationFeatureDiscoveryConfiguration
+import org.mozilla.fenix.tabgroups.storage.redux.middleware.TabGroupMiddleware
+import org.mozilla.fenix.tabgroups.storage.repository.DefaultTabGroupRepository
 import org.mozilla.fenix.telemetry.TelemetryMiddleware
+import org.mozilla.fenix.translations.TranslationsEnabledSettings
+import org.mozilla.fenix.utils.Settings.DeleteDownloadBehavior
 import org.mozilla.fenix.utils.getUndoDelay
 import org.mozilla.geckoview.GeckoRuntime
 import java.util.concurrent.TimeUnit
@@ -201,13 +218,12 @@ class Core(
             crliteChannel = FxNimbus.features.pki.value().crliteChannel,
             downloadDelegate = EngineDownloadDelegate(
                 context = context,
-                downloadLocationGetter = {
-                    Environment.getExternalStoragePublicDirectory(
-                        Environment.DIRECTORY_DOWNLOADS,
-                    ).absolutePath
+                downloadLocation = {
+                    DownloadLocationManager(context).defaultLocation
                 },
             ),
-            )
+            useContentBlockingDatabase = context.settings().shouldUseTrackingProtectionDatabase,
+        )
 
         // Apply fingerprinting protection overrides if the feature is enabled in Nimbus
         if (FxNimbus.features.fingerprintingProtection.value().enabled) {
@@ -241,6 +257,19 @@ class Core(
                 FxNimbus.features.safeBrowsingV5.value().enableV5
         }
 
+        // Apply Safe Browsing Real-Time settings if the Nimbus feature is enabled.
+        with(FxNimbus.features.safeBrowsingRealTime.value()) {
+            if (featureEnabled) {
+                defaultSettings.safeBrowsingGlobalCacheEnabled = globalCacheEnabled
+                defaultSettings.safeBrowsingRealTimeEnabled = realTimeEnabled
+                defaultSettings.safeBrowsingRealTimeSimulationEnabled = simulationEnabled
+                defaultSettings.safeBrowsingRealTimeSimulationHitProbability = simulationHitProbability
+                defaultSettings.safeBrowsingRealTimeSimulationCacheTTLSec = simulationCacheTtlSec
+                defaultSettings.safeBrowsingRealTimeSimulationNegativeCacheEnabled = simulationNegativeCacheEnabled
+                defaultSettings.safeBrowsingRealTimeSimulationNegativeCacheTTLSec = simulationNegativeCacheTtlSec
+            }
+        }
+
         GeckoEngine(
             context = context,
             defaultSettings = defaultSettings,
@@ -257,7 +286,12 @@ class Core(
      * NB: This does not need to be lazy as it is initialized
      * with the engine on startup.
      */
-    val requestInterceptor = AppRequestInterceptor(context)
+    val requestInterceptor = AppRequestInterceptor(
+        context = context,
+        isPrivateForSession = { session ->
+            store.state.findTabOrCustomTab(session)?.content?.private ?: true
+        },
+    )
 
     /**
      * [Client] implementation to be used for code depending on `concept-fetch``
@@ -334,8 +368,14 @@ class Core(
                     applicationContext = context,
                     downloadServiceClass = DownloadService::class.java,
                     deleteFileFromStorage = {
-                       context.settings().shouldCleanUpDownloadsAutomatically()
+                        context.settings().deleteDownloadBehavior == DeleteDownloadBehavior.DELETE_FROM_DEVICE
                     },
+                    downloadFileUtils = DefaultDownloadFileUtils(
+                        context = context.applicationContext,
+                        downloadLocation = {
+                            DownloadLocationManager(context.applicationContext).defaultLocation
+                        },
+                    ),
                 ),
                 ReaderViewMiddleware(),
                 TelemetryMiddleware(context, context.settings(), metrics, crashReporter),
@@ -354,6 +394,7 @@ class Core(
                 AdsTelemetryMiddleware(adsTelemetry),
                 LastMediaAccessMiddleware(),
                 HistoryMetadataMiddleware(historyMetadataService),
+                ProtectionsDashboardMiddleware(protectionsStorage),
                 SessionPrioritizationMiddleware(),
                 SaveToPDFMiddleware(context),
                 FxSuggestFactsMiddleware(),
@@ -367,7 +408,14 @@ class Core(
                 // We are disabling automatically initializing translations so that we can control when
                 // we start this process. For details, see:
                 // https://bugzilla.mozilla.org/show_bug.cgi?id=1958042
-                TranslationsMiddleware(engine, MainScope(), false),
+                TranslationsMiddleware(
+                    engine = engine,
+                    scope = MainScope(),
+                    automaticallyInitialize = false,
+                    isTranslationsEnabled = {
+                        TranslationsEnabledSettings.dataStore(context).isEnabled.first()
+                    },
+                ),
                 StartupMiddleware(
                     applicationContext = context,
                     repository = DefaultHomepageAsANewTabPreferenceRepository(context.settings()),
@@ -376,6 +424,7 @@ class Core(
                     homepageTitle = context.getString(R.string.tab_tray_homepage_tab),
                 ),
                 BrowserVisualCompletenessMiddleware(visualCompletenessQueue),
+                TabGroupMiddleware(tabGroupRepository = tabGroupRepository),
             )
 
         BrowserStore(
@@ -401,10 +450,11 @@ class Core(
                         rootStorageDirectory = context.filesDir,
                         readJson = readJson,
                         collectionName = COLLECTION_NAME,
-                        serverUrl = if (context.settings().useProductionRemoteSettingsServer) {
-                            REMOTE_PROD_ENDPOINT_URL
-                        } else {
-                            REMOTE_STAGE_ENDPOINT_URL
+                        serverUrl = when (context.settings().remoteSettingsServer) {
+                            context.getString(R.string.remote_settings_server_prod) -> REMOTE_PROD_ENDPOINT_URL
+                            context.getString(R.string.remote_settings_server_dev) -> REMOTE_DEV_ENDPOINT_URL
+                            context.getString(R.string.remote_settings_server_stage) -> REMOTE_STAGE_ENDPOINT_URL
+                            else -> REMOTE_PROD_ENDPOINT_URL
                         },
                     ).updateProviderList()
                 }
@@ -463,10 +513,26 @@ class Core(
     }
 
     /**
+     * The [ProtectionsStorage] is used to store tracker blocking statistics.
+     */
+    val protectionsStorage: ProtectionsStorage by lazyMonitored {
+        ProtectionsStorage(context)
+    }
+
+    val merinoManifestProvider by lazyMonitored {
+        MerinoManifestProvider(context.assets)
+    }
+
+    /**
      * Icons component for loading, caching and processing website icons.
      */
     val icons by lazyMonitored {
-        BrowserIcons(context, client)
+        BrowserIcons(
+            context = context,
+            httpClient = client,
+            manifestProvider = merinoManifestProvider,
+            useMerinoManifest = context.settings().enableMerinoManifest,
+        )
     }
 
     val metrics by lazyMonitored {
@@ -652,6 +718,32 @@ class Core(
 
     val loginExceptionStorage by lazyMonitored { LoginExceptionStorage(context) }
 
+    val summarizationSettings: FenixSummarizationSettingsBinding by lazyMonitored {
+        FenixSummarizationSettingsBinding(SummarizationSettings.dataStore(context))
+    }
+
+    /**
+     * Fenix implementation of [SummarizationFeatureDiscoveryConfiguration]
+     * backed by [org.mozilla.fenix.utils.Settings]
+     */
+    val summarizeFeatureSettings: FenixSummarizationFeatureConfiguration by lazyMonitored {
+        FenixSummarizationFeatureConfiguration(
+            settings = context.components.settings,
+            summarizationSettingsBinding = summarizationSettings,
+        )
+    }
+
+    val tabGroupRepository by lazyMonitored { DefaultTabGroupRepository(context) }
+
+    /**
+     * Summarization eligibility checker
+     */
+    val summarizationEligibilityChecker: SummarizationEligibilityChecker by lazyMonitored {
+        DefaultSummarizationEligibilityChecker()
+    }
+
+    val longFoxFeature by lazyMonitored { LongFoxFeature() }
+
     /**
      * Shared Preferences that encrypt/decrypt using Android KeyStore and lib-dataprotect for 23+
      * only on Nightly/Debug for now, otherwise simply stored.
@@ -734,5 +826,6 @@ class Core(
         const val COLLECTION_NAME = "search-telemetry-v2"
         internal const val REMOTE_PROD_ENDPOINT_URL = "https://firefox.settings.services.mozilla.com"
         internal const val REMOTE_STAGE_ENDPOINT_URL = "https://firefox.settings.services.allizom.org"
+        internal const val REMOTE_DEV_ENDPOINT_URL = "https://remote-settings-dev.allizom.org"
     }
 }
